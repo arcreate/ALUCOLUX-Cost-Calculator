@@ -1,0 +1,36 @@
+ALUCOLUX® 成本计算器 — 打包与分发指南
+=====================================
+
+【当前已定稿版本】v0.2.0（与 app.py 中 APP_VERSION 一致）
+
+一、源码运行（推荐给内部技术同事）
+-----------------------------------
+1. 安装 Python 3.10 或更高 64 位版本。
+2. 在本文件夹打开终端，创建虚拟环境（可选）：
+   python -m venv .venv
+   .venv\Scripts\activate
+3. 安装依赖：
+   pip install -r requirements.txt
+4. 启动：
+   streamlit run app.py
+5. 浏览器访问终端提示的本地地址（通常为 http://localhost:8501）。
+
+二、用户手册 RTF
+----------------
+   python docs\generate_alucolux_user_manual_rtf.py
+   生成根目录 ALUCOLUX_用户手册.rtf，可用 Word 打开并另存为 .docx。
+
+三、独立可执行程序（可选，需另行配置）
+--------------------------------------
+若需打成单文件 EXE 分发，常见做法有：
+- PyInstaller / cx_Freeze 等，将 streamlit 作为模块带入；
+- 需注意：Streamlit 打包体积较大，且需在目标机上放行防火墙、首次运行可能较慢。
+
+建议在确定目标环境（仅 Windows / 需否内网）后再选定方案；如需可针对 PyInstaller 单独增加 spec 与批处理脚本。
+
+四、发布检查清单（建议）
+------------------------
+[ ] default_config.json 中默认参数符合当前业务定稿
+[ ] color_cost_db.csv 是否需附带初始数据或空模板
+[ ] 是否向终端用户一并提供 打包说明.txt 与 RELEASE 存档说明
+[ ] requirements.txt 是否锁定次要版本（如 streamlit==x.y.z）以便可复现构建

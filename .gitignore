@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.streamlit/secrets.toml
+
+# IDE / local
+.cursor/
+.vscode/
+
+# Historical milestone zips (keep on disk; not duplicated in Git)
+archives/
+
+# Optional: exclude local release zips from repo if you prefer smaller clones
+# releases/*.zip
