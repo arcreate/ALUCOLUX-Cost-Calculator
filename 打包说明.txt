@@ -20,6 +20,13 @@ ALUCOLUX® 成本计算器 — 打包与分发指南
    python docs\generate_alucolux_user_manual_rtf.py
    生成根目录 ALUCOLUX_用户手册.rtf，可用 Word 打开并另存为 .docx。
 
+三、生成源码发布包（ZIP）
+-------------------------
+在项目根目录执行：
+   python scripts\make_release_zip.py
+将在 releases 文件夹生成 ALUCOLUX-Cost-Calculator_v0.2.0_source.zip（不含 .git、虚拟环境及 releases 内旧 zip，避免误打包进超大文件）。
+若 releases 下曾有异常体积的 zip（例如误把 zip 自身反复打包），可安全删除后再执行上述命令。
+
 三、独立可执行程序（可选，需另行配置）
 --------------------------------------
 若需打成单文件 EXE 分发，常见做法有：

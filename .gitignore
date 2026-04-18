@@ -15,5 +15,6 @@ venv/
 # Historical milestone zips (keep on disk; not duplicated in Git)
 archives/
 
-# Optional: exclude local release zips from repo if you prefer smaller clones
-# releases/*.zip
+# 发布 zip 由 scripts/make_release_zip.py 本地生成，避免误提交或锁定冲突
+releases/*.zip
+releases/*.zip.tmp
