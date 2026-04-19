@@ -11,14 +11,24 @@ ALUCOLUX® 成本计算器 — 打包与分发指南
    .venv\Scripts\activate
 3. 安装依赖：
    pip install -r requirements.txt
-4. 启动：
+4. 启动（Streamlit，浏览器访问终端给出的地址，通常为 http://localhost:8501）：
    streamlit run app.py
-5. 浏览器访问终端提示的本地地址（通常为 http://localhost:8501）。
+   或：python launcher.py
 
-二、用户手册 RTF
-----------------
+   说明：仓库中的 flet_app.py 为此前实验性桌面界面，需另行 pip install flet，不作为当前主推方式。
+
+5. （推荐给同事）**完整便携 ZIP**：维护者在项目根执行 `scripts\build_portable_zip.bat`（或 `python scripts\build_portable_full_zip.py`），在 releases\ 下生成 `ALUCOLUX-Cost-Calculator_portable_<版本>.zip`。他人收到后**解压 → 双击包内「run.bat」**即可，无需安装 Python、无需管理员。说明见 scripts\portable\构建便携环境说明.txt。
+
+6. （仅开发备选）自行下载 embeddable 解压到项目 `python\` 的，可运行 scripts\portable\setup_portable_env.bat，再用根目录 run_portable.bat 调试。
+
+二、用户手册（基准版与定稿，请勿混淆）
+--------------------------------------
+生成脚本默认只写入：docs\ALUCOLUX_用户手册_基准版.rtf（可反复覆盖）。
+您在 Word 中插图、排版后的定稿请保存为：ALUCOLUX_用户手册_定稿.rtf（推荐），
+或保留为 ALUCOLUX_用户手册.rtf — 脚本默认不会覆盖这两个路径下的已有文件。
+详见 docs\用户手册与定稿说明.txt。
+
    python docs\generate_alucolux_user_manual_rtf.py
-   生成根目录 ALUCOLUX_用户手册.rtf，可用 Word 打开并另存为 .docx。
 
 三、生成源码发布包（ZIP）
 -------------------------
@@ -27,15 +37,30 @@ ALUCOLUX® 成本计算器 — 打包与分发指南
 将在 releases 文件夹生成 ALUCOLUX-Cost-Calculator_v0.2.0_source.zip（不含 .git、虚拟环境及 releases 内旧 zip，避免误打包进超大文件）。
 若 releases 下曾有异常体积的 zip（例如误把 zip 自身反复打包），可安全删除后再执行上述命令。
 
-三、独立可执行程序（可选，需另行配置）
---------------------------------------
-若需打成单文件 EXE 分发，常见做法有：
-- PyInstaller / cx_Freeze 等，将 streamlit 作为模块带入；
-- 需注意：Streamlit 打包体积较大，且需在目标机上放行防火墙、首次运行可能较慢。
+四、Windows 目录版（PyInstaller，历史方案，与当前主推 Streamlit 源码不同步）
+--------------------------------------------------------------------------
+说明：若已放弃 exe 打包，可忽略本节；日常开发与交付以**第一节** `streamlit run app.py` 为准。
+当前仓库内的 `alucolux_windows.spec` 仍针对**旧版 Flet 入口**（launcher → flet），若要重新制作基于 Streamlit 的目录版，需自行改写 spec（收集 streamlit 资源、取消 excludes 中的 streamlit 等），不在本文维护范围。
 
-建议在确定目标环境（仅 Windows / 需否内网）后再选定方案；如需可针对 PyInstaller 单独增加 spec 与批处理脚本。
+目标（历史）：在 Windows 下一套文件夹运行；**用户手册**与**存盘文件**在 exe 同目录的独立子文件夹，其余依赖打在 `_internal` 中。
 
-四、发布检查清单（建议）
+注意：**本节仅生成 dist\ALUCOLUX\ 可执行目录**，不会在 releases\ 下生成「第三节」所述源码 ZIP；若需要源码归档包，须另执行 `python scripts\make_release_zip.py`。
+
+构建步骤（必须在项目根目录执行）：
+   scripts\build_windows.bat
+或：
+   python -m pip install "pyinstaller>=6.0"
+   python -m PyInstaller --clean --noconfirm alucolux_windows.spec
+
+输出：`dist\ALUCOLUX\`（内含 ALUCOLUX.exe 与 `_internal`）。将整个 `ALUCOLUX` 文件夹打包 zip 即可分发。
+
+运行时会在 exe 旁自动维护：
+- `数据\` — default_config.json、color_cost_db.csv、saved_calculations\
+- `用户手册\` — 首次从 `bundle_seed` 释放的基准 RTF，用户可放定稿
+
+详见 `docs\WINDOWS_分发说明.txt`。旧版放在根目录的配置会在首次启动时迁移到 `数据\`。
+
+五、发布检查清单（建议）
 ------------------------
 [ ] default_config.json 中默认参数符合当前业务定稿
 [ ] color_cost_db.csv 是否需附带初始数据或空模板

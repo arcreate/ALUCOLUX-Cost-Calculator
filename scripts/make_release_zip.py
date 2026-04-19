@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "releases" / "ALUCOLUX-Cost-Calculator_v0.2.0_source.zip"
 
-SKIP_TOP_DIRS = frozenset({"__pycache__", ".git", ".venv", "venv", ".cursor", "archives"})
+SKIP_TOP_DIRS = frozenset({"__pycache__", ".git", ".venv", "venv", ".cursor", "archives", "dist", "build"})
 SKIP_SUFFIX = frozenset({".pyc", ".pyo"})
 
 

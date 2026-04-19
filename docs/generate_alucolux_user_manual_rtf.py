@@ -1,14 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-生成《ALUCOLUX 成本计算器用户手册》RTF 文件（可用 Microsoft Word 直接打开）。
-运行：在项目根目录执行  python docs/generate_alucolux_user_manual_rtf.py
+生成《ALUCOLUX 成本计算器用户手册》纯文本基准 RTF（可用 Word 打开）。
+
+重要（请勿再踩坑）
+----------------
+- 默认只写入 docs/ALUCOLUX_用户手册_基准版.rtf，不会动项目根目录下的定稿文件。
+- 若您在根目录维护「已插图、已排版」的定稿，请使用固定文件名之一，脚本默认不覆盖：
+    ALUCOLUX_用户手册_定稿.rtf   或   ALUCOLUX_用户手册.rtf（仅当未使用 --out 指到该路径时受保护）
+- 只有显式传入  --out 路径 且加  --force  时才会覆盖已存在的目标文件。
+
+运行：在项目根目录执行
+  python docs/generate_alucolux_user_manual_rtf.py
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
-OUT_NAME = "ALUCOLUX_用户手册.rtf"
+# 默认输出：docs 子目录内，可反复覆盖，不影响根目录定稿
+DEFAULT_OUT_REL = os.path.join("docs", "ALUCOLUX_用户手册_基准版.rtf")
+# 用户常用于插图的定稿路径（脚本默认绝不覆写，除非 --force）
+ROOT_MANUAL_CANDIDATES = ("ALUCOLUX_用户手册.rtf", "ALUCOLUX_用户手册_定稿.rtf")
 APP_VERSION_NOTE = "v0.2.0（以您安装的软件界面或发布说明为准）"
 
 
@@ -460,9 +473,45 @@ def build_rtf() -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate baseline ALUCOLUX user manual RTF.")
+    parser.add_argument(
+        "--out",
+        metavar="PATH",
+        help=f"输出 RTF 文件路径（默认：{DEFAULT_OUT_REL}，相对于项目根目录）",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="若目标文件已存在仍强制覆盖（会丢失该路径下已有插图与手工修改）",
+    )
+    args = parser.parse_args()
+
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    out_path = os.path.join(root, OUT_NAME)
+    out_path = os.path.normpath(os.path.join(root, args.out or DEFAULT_OUT_REL))
+    baseline_abs = os.path.normpath(os.path.join(root, DEFAULT_OUT_REL))
+    protected = {os.path.normpath(os.path.join(root, p)) for p in ROOT_MANUAL_CANDIDATES}
+    exists = os.path.isfile(out_path)
+
+    if exists and not args.force:
+        if out_path in protected:
+            print(
+                "已中止：目标为受保护的定稿路径，避免覆盖您插入的截图或手工排版。\n"
+                f"  目标：{out_path}\n"
+                "  若确需用机器生成内容覆盖该文件，请加：  --force\n"
+                f"  建议：默认不带参数，只覆盖「基准版」({DEFAULT_OUT_REL})。",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        if out_path != baseline_abs:
+            print(
+                f"已中止：目标已存在：{out_path}\n"
+                "  非「基准版」路径需加 --force 才覆盖。",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     rtf = build_rtf()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="ascii", errors="strict") as f:
         f.write(rtf)
     print("Written:", out_path)
@@ -471,6 +520,8 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+    except SystemExit:
+        raise
     except Exception as e:
         print("Error:", e, file=sys.stderr)
         sys.exit(1)
