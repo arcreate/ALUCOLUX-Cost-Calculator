@@ -15,7 +15,7 @@ ALUCOLUX® 成本计算器 — 打包与分发指南
    streamlit run app.py
    或：python launcher.py
 
-   说明：仓库中的 flet_app.py 为此前实验性桌面界面，需另行 pip install flet，不作为当前主推方式。
+   说明：当前仓库仅保留 Streamlit 入口，启动与分发均按本节说明执行。
 
 5. （推荐给同事）**完整便携 ZIP**：维护者在项目根执行 `scripts\build_portable_zip.bat`（或 `python scripts\build_portable_full_zip.py`），在 releases\ 下生成 `ALUCOLUX-Cost-Calculator_portable_<版本>.zip`。他人收到后**解压 → 双击包内「run.bat」**即可，无需安装 Python、无需管理员。说明见 scripts\portable\构建便携环境说明.txt。
 
@@ -37,30 +37,7 @@ ALUCOLUX® 成本计算器 — 打包与分发指南
 将在 releases 文件夹生成 ALUCOLUX-Cost-Calculator_v0.2.0_source.zip（不含 .git、虚拟环境及 releases 内旧 zip，避免误打包进超大文件）。
 若 releases 下曾有异常体积的 zip（例如误把 zip 自身反复打包），可安全删除后再执行上述命令。
 
-四、Windows 目录版（PyInstaller，历史方案，与当前主推 Streamlit 源码不同步）
---------------------------------------------------------------------------
-说明：若已放弃 exe 打包，可忽略本节；日常开发与交付以**第一节** `streamlit run app.py` 为准。
-当前仓库内的 `alucolux_windows.spec` 仍针对**旧版 Flet 入口**（launcher → flet），若要重新制作基于 Streamlit 的目录版，需自行改写 spec（收集 streamlit 资源、取消 excludes 中的 streamlit 等），不在本文维护范围。
-
-目标（历史）：在 Windows 下一套文件夹运行；**用户手册**与**存盘文件**在 exe 同目录的独立子文件夹，其余依赖打在 `_internal` 中。
-
-注意：**本节仅生成 dist\ALUCOLUX\ 可执行目录**，不会在 releases\ 下生成「第三节」所述源码 ZIP；若需要源码归档包，须另执行 `python scripts\make_release_zip.py`。
-
-构建步骤（必须在项目根目录执行）：
-   scripts\build_windows.bat
-或：
-   python -m pip install "pyinstaller>=6.0"
-   python -m PyInstaller --clean --noconfirm alucolux_windows.spec
-
-输出：`dist\ALUCOLUX\`（内含 ALUCOLUX.exe 与 `_internal`）。将整个 `ALUCOLUX` 文件夹打包 zip 即可分发。
-
-运行时会在 exe 旁自动维护：
-- `数据\` — default_config.json、color_cost_db.csv、saved_calculations\
-- `用户手册\` — 首次从 `bundle_seed` 释放的基准 RTF，用户可放定稿
-
-详见 `docs\WINDOWS_分发说明.txt`。旧版放在根目录的配置会在首次启动时迁移到 `数据\`。
-
-五、发布检查清单（建议）
+四、发布检查清单（建议）
 ------------------------
 [ ] default_config.json 中默认参数符合当前业务定稿
 [ ] color_cost_db.csv 是否需附带初始数据或空模板

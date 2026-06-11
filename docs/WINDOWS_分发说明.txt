@@ -1,32 +1,27 @@
-ALUCOLUX® 成本计算器 — Windows 目录版分发说明
-============================================
+ALUCOLUX® 成本计算器 — Windows 分发说明（仅 Portable ZIP）
+======================================================
 
-构建（开发者）
---------------
-1. 安装 Python 3.10+ 与项目依赖： pip install -r requirements.txt
-2. 在项目根目录双击或执行：
-      scripts\build_windows.bat
-   或在根目录执行：
-      python -m PyInstaller --clean --noconfirm alucolux_windows.spec
-3. 生成结果位于：dist\ALUCOLUX\
-   - ALUCOLUX.exe        启动程序
-   - _internal\          运行库与 Streamlit 资源（勿删）
-   可将整个「ALUCOLUX」文件夹压缩 zip 分发给用户。
+当前策略（请以此为准）
+----------------------
+本项目当前仅维护 **Portable ZIP（解压即用）** 分发，不再维护 PyInstaller EXE 目录版。
+请使用以下方式构建分发包：
 
-【请勿搞错】build 与 dist
--------------------------
-- 请只运行 **dist\ALUCOLUX\** 里的 ALUCOLUX.exe（必须与 **\_internal** 在同一文件夹）。
-- **不要**单独双击 **build** 目录下的 exe：那是打包中间产物，往往缺少完整依赖，表现为双击后毫无反应或闪退。
+  scripts\build_portable_zip.bat
+或
+  python scripts\build_portable_full_zip.py
+
+产物位于：
+  releases\ALUCOLUX-Cost-Calculator_portable_<版本>.zip
 
 终端用户（使用）
 ----------------
-1. 解压到任意路径（勿放在受保护目录时若遇权限问题，可改到「文档」下）。
-2. 双击 ALUCOLUX.exe；将打开一个黑色命令行窗口，数秒内默认浏览器应访问本机页面（默认 http://127.0.0.1:8501）。
+1. 解压 ZIP 到任意路径（若遇权限问题，建议放到「文档」下）。
+2. 双击 run.bat；将打开一个黑色命令行窗口，数秒内默认浏览器应访问本机页面（默认 http://127.0.0.1:8501）。
    若未自动打开，请在浏览器地址栏手动输入上述地址。勿关闭黑窗口，否则程序会退出。
-3. 首次运行后，在 ALUCOLUX.exe 同目录会自动出现：
+3. 运行后，在解压目录会维护：
    - 数据\              存盘：default_config.json、color_cost_db.csv、saved_calculations\
    - 用户手册\          模板与定稿 RTF（可替换、增补）
-   升级或重装 exe 时请勿删除「数据」文件夹，以免丢失配置与计算库。
+   升级新包时请勿删除「数据」文件夹，以免丢失配置与计算库。
 
 源码开发时的变更说明
 --------------------

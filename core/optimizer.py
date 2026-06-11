@@ -53,25 +53,7 @@ def calc_trial_delta_cost(payload: Dict[str, Any], vars_map: Dict[str, float]) -
     return float(full["total_direct_cost"] - without_trial["total_direct_cost"])
 
 
-def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -> Dict[str, Any]:
-    """
-    业务作用
-    --------
-    对多笔已完成计算的订单进行“统筹生产”模拟，输出潜在节约金额与元/㎡改善幅度。
-
-    给非程序员的理解方式
-    --------------------
-    每个项目先有一套“独立生产成本”，然后尝试在可共享环节做合并：
-    1) 同宽厚铝卷统筹（减少卷头卷尾损耗）
-    2) 同颜色共享漆盘费
-    3) 同宽厚同颜色共享试机成本
-    4) 同规格小单统筹开机费
-    最后把组内节约按合理权重分摊回每个项目。
-
-    修改影响范围
-    ----------
-    这里的逻辑会直接影响优化报告中的总节约、分项节约、以及单位面积节约。
-    """
+def _build_optimization_items(records: List[Dict[str, Any]], merged_vars_func) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for idx, payload in enumerate(records):
         order = payload["order"]
@@ -104,16 +86,15 @@ def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -
                 "savings_breakdown": [],
             }
         )
+    return items
 
-    summary_groups = []
 
-    # 机会1：同宽度+同厚度的铝卷统筹。
-    # 通过合并卷数，减少卷头卷尾损耗；节约按初步铝重比例分摊。
+def _apply_aluminum_coordination(items: List[Dict[str, Any]], summary_groups: List[Dict[str, Any]]) -> None:
     wt_groups: Dict[str, List[Dict[str, Any]]] = {}
     for item in items:
         key = f"{item['width_m']:.6f}|{item['thickness_mm']:.6f}"
         wt_groups.setdefault(key, []).append(item)
-    for _, group in wt_groups.items():
+    for group in wt_groups.values():
         if len(group) < 2:
             continue
         width = group[0]["width_m"]
@@ -128,25 +109,26 @@ def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -
         saved_rolls = max(0, separate_rolls - combined_rolls)
         saved_weight = saved_rolls * head_tail_length * width * thickness * al_density
         saved_cost = saved_weight * price
-        if saved_cost > 0:
-            total_weight = sum(g["initial_al_weight"] for g in group) or 1.0
-            for g in group:
-                share = g["initial_al_weight"] / total_weight
-                alloc = saved_cost * share
-                g["optimized_cost"] -= alloc
-                g["savings"] += alloc
-                g["savings_breakdown"].append(f"同宽厚铝卷统筹节约 {fmt_money(alloc)} 元")
-            summary_groups.append(
-                {
-                    "type": "aluminum",
-                    "title": f"同宽度厚度铝卷统筹：宽 {width:.3f} m / 厚 {thickness:.3f} mm",
-                    "saving": saved_cost,
-                    "projects": [g["project_name"] for g in group],
-                }
-            )
+        if saved_cost <= 0:
+            continue
+        total_weight = sum(g["initial_al_weight"] for g in group) or 1.0
+        for g in group:
+            share = g["initial_al_weight"] / total_weight
+            alloc = saved_cost * share
+            g["optimized_cost"] -= alloc
+            g["savings"] += alloc
+            g["savings_breakdown"].append(f"同宽厚铝卷统筹节约 {fmt_money(alloc)} 元")
+        summary_groups.append(
+            {
+                "type": "aluminum",
+                "title": f"同宽度厚度铝卷统筹：宽 {width:.3f} m / 厚 {thickness:.3f} mm",
+                "saving": saved_cost,
+                "projects": [g["project_name"] for g in group],
+            }
+        )
 
-    # 机会2：同颜色项目共享漆盘费。
-    # 组内保留一笔最大的漆盘费，其余视作可节约部分。
+
+def _apply_paint_disk_sharing(items: List[Dict[str, Any]], summary_groups: List[Dict[str, Any]]) -> None:
     color_groups: Dict[str, List[Dict[str, Any]]] = {}
     for item in items:
         key = item["color_code"].strip().upper()
@@ -157,61 +139,63 @@ def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -
             continue
         keeper = max(group, key=lambda g: g["paint_disk_cost"])
         saved_cost = sum(g["paint_disk_cost"] for g in group) - keeper["paint_disk_cost"]
-        if saved_cost > 0:
-            for g in group:
-                if g is keeper:
-                    continue
-                alloc = g["paint_disk_cost"]
-                g["optimized_cost"] -= alloc
-                g["savings"] += alloc
-                g["savings_breakdown"].append(f"同颜色共享漆盘费节约 {fmt_money(alloc)} 元")
-            summary_groups.append(
-                {
-                    "type": "paint_disk",
-                    "title": f"同颜色共享漆盘费：颜色 {key}",
-                    "saving": saved_cost,
-                    "projects": [g["project_name"] for g in group],
-                }
-            )
+        if saved_cost <= 0:
+            continue
+        for g in group:
+            if g is keeper:
+                continue
+            alloc = g["paint_disk_cost"]
+            g["optimized_cost"] -= alloc
+            g["savings"] += alloc
+            g["savings_breakdown"].append(f"同颜色共享漆盘费节约 {fmt_money(alloc)} 元")
+        summary_groups.append(
+            {
+                "type": "paint_disk",
+                "title": f"同颜色共享漆盘费：颜色 {key}",
+                "saving": saved_cost,
+                "projects": [g["project_name"] for g in group],
+            }
+        )
 
-    # 机会3：同宽厚同颜色共享试机。
-    # 组内保留试机成本最高的一单，其余试机增量视为可节约。
+
+def _apply_trial_sharing(items: List[Dict[str, Any]], summary_groups: List[Dict[str, Any]]) -> None:
     trial_groups: Dict[str, List[Dict[str, Any]]] = {}
     for item in items:
         key = f"{item['width_m']:.6f}|{item['thickness_mm']:.6f}|{item['color_code'].strip().upper()}"
         if item["color_code"] != "未指定":
             trial_groups.setdefault(key, []).append(item)
-    for _, group in trial_groups.items():
+    for group in trial_groups.values():
         if len(group) < 2:
             continue
         keeper = max(group, key=lambda g: g["trial_delta_cost"])
         saved_cost = sum(g["trial_delta_cost"] for g in group) - keeper["trial_delta_cost"]
-        if saved_cost > 0:
-            for g in group:
-                if g is keeper:
-                    continue
-                alloc = g["trial_delta_cost"]
-                g["optimized_cost"] -= alloc
-                g["savings"] += alloc
-                g["savings_breakdown"].append(f"同宽厚同颜色共享试机节约 {fmt_money(alloc)} 元")
-            summary_groups.append(
-                {
-                    "type": "trial",
-                    "title": f"同宽厚同颜色共享试机：{keeper['width_m']:.3f} m / {keeper['thickness_mm']:.3f} mm / {keeper['color_code']}",
-                    "saving": saved_cost,
-                    "projects": [g["project_name"] for g in group],
-                }
-            )
+        if saved_cost <= 0:
+            continue
+        for g in group:
+            if g is keeper:
+                continue
+            alloc = g["trial_delta_cost"]
+            g["optimized_cost"] -= alloc
+            g["savings"] += alloc
+            g["savings_breakdown"].append(f"同宽厚同颜色共享试机节约 {fmt_money(alloc)} 元")
+        summary_groups.append(
+            {
+                "type": "trial",
+                "title": f"同宽厚同颜色共享试机：{keeper['width_m']:.3f} m / {keeper['thickness_mm']:.3f} mm / {keeper['color_code']}",
+                "saving": saved_cost,
+                "projects": [g["project_name"] for g in group],
+            }
+        )
 
-    # 机会4：同宽厚同颜色的小单统筹开机费。
-    # 先比较“各自开机费合计”与“统筹后的开机费”，再按原开机费占比分摊节约。
+
+def _apply_open_machine_coordination(items: List[Dict[str, Any]], summary_groups: List[Dict[str, Any]]) -> None:
     spec_om_groups: Dict[str, List[Dict[str, Any]]] = {}
     for item in items:
         if item["color_code"] == "未指定":
             continue
         key = f"{item['width_m']:.6f}|{item['thickness_mm']:.6f}|{item['color_code'].strip().upper()}"
         spec_om_groups.setdefault(key, []).append(item)
-    for _, group in spec_om_groups.items():
+    for group in spec_om_groups.values():
         if len(group) < 2:
             continue
         fee = float(group[0]["om_fee"])
@@ -241,7 +225,8 @@ def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -
             }
         )
 
-    # 汇总：计算每个项目独立/统筹后的元/㎡，并给出整体加权平均指标。
+
+def _finalize_summary(items: List[Dict[str, Any]], summary_groups: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_area = sum(i["contract_area"] for i in items)
     for i in items:
         area = float(i["contract_area"])
@@ -270,6 +255,41 @@ def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -
         "weighted_optimized_m2": w_opt,
         "weighted_saving_m2": w_stand - w_opt,
     }
+
+
+def analyze_cost_optimization(records: List[Dict[str, Any]], merged_vars_func) -> Dict[str, Any]:
+    """
+    业务作用
+    --------
+    对多笔已完成计算的订单进行“统筹生产”模拟，输出潜在节约金额与元/㎡改善幅度。
+
+    给非程序员的理解方式
+    --------------------
+    每个项目先有一套“独立生产成本”，然后尝试在可共享环节做合并：
+    1) 同宽厚铝卷统筹（减少卷头卷尾损耗）
+    2) 同颜色共享漆盘费
+    3) 同宽厚同颜色共享试机成本
+    4) 同规格小单统筹开机费
+    最后把组内节约按合理权重分摊回每个项目。
+
+    修改影响范围
+    ----------
+    这里的逻辑会直接影响优化报告中的总节约、分项节约、以及单位面积节约。
+    """
+    items = _build_optimization_items(records, merged_vars_func)
+
+    summary_groups = []
+
+    # 机会1：同宽度+同厚度的铝卷统筹。
+    _apply_aluminum_coordination(items, summary_groups)
+    # 机会2：同颜色项目共享漆盘费。
+    _apply_paint_disk_sharing(items, summary_groups)
+    # 机会3：同宽厚同颜色共享试机。
+    _apply_trial_sharing(items, summary_groups)
+    # 机会4：同宽厚同颜色的小单统筹开机费。
+    _apply_open_machine_coordination(items, summary_groups)
+    # 汇总：计算每个项目独立/统筹后的元/㎡，并给出整体加权平均指标。
+    return _finalize_summary(items, summary_groups)
 
 
 def build_optimizer_report(analysis: Dict[str, Any], ui_lang: str) -> str:

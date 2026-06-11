@@ -71,7 +71,7 @@ COATING_UI_TO_CODE = {
     "2花（印花2层）": "PRINT2",
 }
 
-APP_VERSION = "v0.2.0"
+APP_VERSION = "v0.2.1"
 
 COATING_CODE_TO_LABEL = {
     "PVDF2": {"中文": "PVDF2（无印花）", "English": "PVDF2 (No print)"},
@@ -424,7 +424,7 @@ VAR_META: Dict[str, Dict[str, str]] = {
     "LAB_SMALL_ROLL_COST": {"zh": "小印花辊成本", "en": "Small print roll cost", "unit": "元/根"},
     "PROD_BIG_ROLL_COST": {"zh": "大印花辊成本", "en": "Big print roll cost", "unit": "元/根"},
     "EMBOSSING_PRICE": {"zh": "压花单价", "en": "Embossing price", "unit": "元/㎡/道"},
-    "EMBOSSING_LOSS_PER_PASS": {"zh": "压花损耗率(每道)", "en": "Embossing loss rate (per pass)", "unit": "-"},
+    "EMBOSSING_LOSS_PER_PASS": {"zh": "压花损耗率(每道)", "en": "Embossing loss rate (per pass)", "unit": "比例 0-1"},
 }
 
 
@@ -874,13 +874,13 @@ def main() -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
         contract_area = float(
-            st.number_input(t("contract_area", ui_lang), min_value=0.0, value=1000.0, step=1.0, format="%.0f")
+            st.number_input(t("contract_area", ui_lang), min_value=0.001, value=1000.0, step=1.0, format="%.3f")
         )
-        width_m = st.number_input(t("width", ui_lang), min_value=0.0, value=1.5, step=0.001, format="%.3f")
+        width_m = st.number_input(t("width", ui_lang), min_value=0.001, value=1.5, step=0.001, format="%.3f")
         batch_orders = st.number_input(t("batch_orders", ui_lang), min_value=1, value=1, step=1)
     with c2:
-        length_m = st.number_input(t("length", ui_lang), min_value=0.0, value=3.00, step=0.001, format="%.3f")
-        thickness_mm = st.number_input(t("thickness", ui_lang), min_value=0.0, value=3.0, step=0.01, format="%.3f")
+        length_m = st.number_input(t("length", ui_lang), min_value=0.001, value=3.00, step=0.001, format="%.3f")
+        thickness_mm = st.number_input(t("thickness", ui_lang), min_value=0.001, value=3.0, step=0.01, format="%.3f")
     with c3:
         selected_coating_code = color_profile["coating_type"] if color_profile else "PVDF2"
         coating_options = [COATING_CODE_TO_LABEL[v][ui_lang] for v in ["PVDF2", "PVDF3", "PRINT1", "PRINT2"]]
@@ -1093,7 +1093,14 @@ def main() -> None:
 
     if st.button(t("calc", ui_lang), type="primary"):
         _sync_vars_map_from_var_widget_keys()
-        if contract_area <= 0 or width_m <= 0 or length_m <= 0 or thickness_mm <= 0:
+        if (
+            contract_area <= 0
+            or width_m <= 0
+            or length_m <= 0
+            or thickness_mm <= 0
+            or int(batch_orders) < 1
+            or int(trial_times) < 0
+        ):
             st.error(t("invalid", ui_lang))
             _refresh_config_export_cache()
             return
@@ -1103,7 +1110,12 @@ def main() -> None:
             _refresh_config_export_cache()
             return
 
-        result = calc_cost(order, st.session_state.vars_map)
+        try:
+            result = calc_cost(order, st.session_state.vars_map)
+        except ValueError:
+            st.error(t("invalid", ui_lang))
+            _refresh_config_export_cache()
+            return
         report = build_report(order, st.session_state.vars_map, result, ui_lang)
         opt_payload = build_optimizer_payload(order, st.session_state.vars_map, result)
         st.session_state.last_optimizer_payload = opt_payload

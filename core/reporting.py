@@ -357,11 +357,21 @@ def build_report(
         lines.append(
             f"- Base area for loss calculation = {'rounded area' if order['use_size_rounding_waste'] else 'contract area'} = {result['calc_base_area']:.3f} m²"
         )
+        embossing_passes_rep = int(result.get("embossing_passes", order.get("embossing_passes", 0)))
+        pre_embossing_area_rep = float(result.get("pre_embossing_area", result["calc_base_area"]))
+        if embossing_passes_rep > 0:
+            loss_rate_rep = float(result.get("embossing_loss_rate", vars_map.get("EMBOSSING_LOSS_PER_PASS", 0.0)))
+            lines.append(
+                f"- Pre-embossing area = base area / (1 - EMBOSSING_LOSS_PER_PASS)^passes = {result['calc_base_area']:.3f} / (1 - {loss_rate_rep})^{embossing_passes_rep} = {pre_embossing_area_rep:.3f} m²"
+            )
+            lines.append(
+                f"- Embossing loss area = pre-embossing area - base area = {result.get('embossing_loss_area', 0.0):.3f} m²"
+            )
         lines.append(
             f"- Trial area = batches x trial runs x TRIAL_LENGTH x width = {int(order.get('batch_orders', 1))} x {order['trial_times']} x {vars_map['TRIAL_LENGTH']:.3f} x {order['width_m']:.3f} = {result['trial_area']:.3f} m²"
         )
         lines.append(
-            f"- Initial total area = base area / (1 - BAD_RATE) + trial area = {result['calc_base_area']:.3f} / (1 - {vars_map['BAD_RATE']}) + {result['trial_area']:.3f} = {result['initial_area']:.3f} m²"
+            f"- Initial total area = pre-embossing area / (1 - BAD_RATE) + trial area = {pre_embossing_area_rep:.3f} / (1 - {vars_map['BAD_RATE']}) + {result['trial_area']:.3f} = {result['initial_area']:.3f} m²"
         )
         lines.append(
             f"- Initial aluminum weight = initial area x thickness x AL_DENSITY = {result['initial_area']:.3f} x {order['thickness_mm']:.3f} x {vars_map['AL_DENSITY']} = {result['initial_al_weight']:.2f} kg"
@@ -389,11 +399,21 @@ def build_report(
         lines.append(
             f"- 损耗计算基准面积 = {'尺寸取整后面积' if order['use_size_rounding_waste'] else '合同面积'} = {result['calc_base_area']:.3f} ㎡"
         )
+        embossing_passes_rep = int(result.get("embossing_passes", order.get("embossing_passes", 0)))
+        pre_embossing_area_rep = float(result.get("pre_embossing_area", result["calc_base_area"]))
+        if embossing_passes_rep > 0:
+            loss_rate_rep = float(result.get("embossing_loss_rate", vars_map.get("EMBOSSING_LOSS_PER_PASS", 0.0)))
+            lines.append(
+                f"- 压花前投产面积 = 基准面积 / (1 - 【压花损耗率(每道) EMBOSSING_LOSS_PER_PASS】)^压花道数 = {result['calc_base_area']:.3f} / (1 - {loss_rate_rep})^{embossing_passes_rep} = {pre_embossing_area_rep:.3f} ㎡"
+            )
+            lines.append(
+                f"- 压花损耗面积 = 压花前投产面积 - 基准面积 = {result.get('embossing_loss_area', 0.0):.3f} ㎡"
+            )
         lines.append(
             f"- 试机面积 = 分批下单 × 试机次数 × 【单次试机长度 TRIAL_LENGTH】× 宽度 = {int(order.get('batch_orders', 1))} × {order['trial_times']} × {vars_map['TRIAL_LENGTH']:.3f} × {order['width_m']:.3f} = {result['trial_area']:.3f} ㎡"
         )
         lines.append(
-            f"- 初步总面积 = 基准面积 / (1 - 【不良品率 BAD_RATE】) + 试机面积 = {result['calc_base_area']:.3f} / (1 - {vars_map['BAD_RATE']}) + {result['trial_area']:.3f} = {result['initial_area']:.3f} ㎡"
+            f"- 初步总面积 = 压花前投产面积 / (1 - 【不良品率 BAD_RATE】) + 试机面积 = {pre_embossing_area_rep:.3f} / (1 - {vars_map['BAD_RATE']}) + {result['trial_area']:.3f} = {result['initial_area']:.3f} ㎡"
         )
         lines.append(
             f"- 初步铝重 = 初步总面积 × 板厚 × 【铝密度 AL_DENSITY】= {result['initial_area']:.3f} × {order['thickness_mm']:.3f} × {vars_map['AL_DENSITY']} = {result['initial_al_weight']:.2f} 千克"

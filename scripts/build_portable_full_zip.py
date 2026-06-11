@@ -75,11 +75,106 @@ def patch_embed_import_site(embed_dir: Path) -> None:
         print(f"已启用 import site：{pth}")
 
 
+def patch_embed_pth_venv_site_packages(embed_dir: Path) -> None:
+    """Embeddable Python ignores PYTHONPATH; register venv site-packages via ._pth paths."""
+    pths = list(embed_dir.glob("python*._pth"))
+    if not pths:
+        raise FileNotFoundError(f"未找到 ._pth 文件：{embed_dir}")
+    pth = pths[0]
+    marker = r"..\.venv\Lib\site-packages"
+    lines = pth.read_text(encoding="utf-8").splitlines()
+    norm = lambda s: s.strip().replace("/", "\\").rstrip("\\")
+    if any(norm(x) == norm(marker) for x in lines):
+        print(f"._pth 已含 venv site-packages：{pth}")
+        return
+    lines.append(marker)
+    pth.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"已写入 venv site-packages 路径到 ._pth：{pth}")
+
+
 def run(cmd: list[str], *, cwd: Path | None = None) -> None:
     print("执行:", " ".join(cmd))
     r = subprocess.run(cmd, cwd=str(cwd) if cwd else None)
     if r.returncode != 0:
         raise SystemExit(r.returncode)
+
+
+def rewrite_pyvenv_cfg_relative(venv_dir: Path) -> None:
+    """Make venv metadata portable across machines."""
+    cfg = venv_dir / "pyvenv.cfg"
+    if not cfg.is_file():
+        raise FileNotFoundError(str(cfg))
+
+    mapped = {
+        "home": r"..\python",
+        "executable": r"..\python\python.exe",
+        "base-prefix": r"..\python",
+        "base-exec-prefix": r"..\python",
+        "base-executable": r"..\python\python.exe",
+        "command": r"..\python\python.exe -m virtualenv .venv",
+    }
+
+    lines_out: list[str] = []
+    touched: set[str] = set()
+    for raw in cfg.read_text(encoding="utf-8").splitlines():
+        if "=" not in raw:
+            lines_out.append(raw)
+            continue
+        key, value = raw.split("=", 1)
+        k = key.strip()
+        if k in mapped:
+            lines_out.append(f"{k} = {mapped[k]}")
+            touched.add(k)
+        else:
+            lines_out.append(f"{k} = {value.strip()}")
+
+    for k, v in mapped.items():
+        if k not in touched:
+            lines_out.append(f"{k} = {v}")
+
+    cfg.write_text("\n".join(lines_out) + "\n", encoding="utf-8")
+    print(f"已修正可移植 pyvenv.cfg：{cfg}")
+
+
+def _venv_site_packages(venv_dir: Path) -> Path | None:
+    for rel in ("Lib/site-packages", "lib/site-packages"):
+        p = venv_dir / rel
+        if p.is_dir():
+            return p
+    return None
+
+
+def prune_venv(venv_dir: Path) -> None:
+    """Trim safe cache files to reduce package size and file count."""
+    for d in venv_dir.rglob("__pycache__"):
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+    for pat in ("*.pyc", "*.pyo"):
+        for f in venv_dir.rglob(pat):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+    # P1: remove frontend source maps (runtime unnecessary).
+    for f in venv_dir.rglob("*.map"):
+        try:
+            f.unlink()
+        except OSError:
+            pass
+
+    sp = _venv_site_packages(venv_dir)
+    if not sp:
+        return
+    # P2: drop per-package test trees (not needed at runtime; huge file count).
+    test_dirs = [p for p in sp.rglob("tests") if p.is_dir() and p.name == "tests"]
+    for p in sorted(test_dirs, key=lambda x: len(x.parts), reverse=True):
+        shutil.rmtree(p, ignore_errors=True)
+    # Typing stubs: not used when running the app; many small files.
+    for f in sp.rglob("*.pyi"):
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
 
 def copy_app_sources() -> None:
@@ -118,7 +213,21 @@ def write_user_files() -> None:
                 "@echo off",
                 'cd /d "%~dp0"',
                 'set "ALUCOLUX_APP_ROOT=%CD%"',
-                '".venv\\Scripts\\python.exe" -m streamlit run "%~dp0app.py" --server.headless false',
+                'if not exist "%~dp0python\\python.exe" (',
+                '  echo ERROR: missing runtime file: python\\python.exe',
+                "  echo Package may be incomplete. Please unzip again.",
+                "  pause",
+                "  exit /b 1",
+                ")",
+                'if not exist "%~dp0.venv\\Lib\\site-packages" (',
+                '  echo ERROR: missing venv packages: .venv\\Lib\\site-packages',
+                "  echo Package may be incomplete. Please unzip again.",
+                "  pause",
+                "  exit /b 1",
+                ")",
+                'set "PATH=%~dp0python;%PATH%"',
+                'REM Embeddable python uses python310._pth for sys.path; do not rely on PYTHONPATH.',
+                '"%~dp0python\\python.exe" -m streamlit run "%~dp0app.py" --server.headless false',
                 "if errorlevel 1 pause",
                 "",
             ]
@@ -225,6 +334,9 @@ def main() -> None:
         pip_install.extend(["-i", ix])
     print("安装项目依赖（体积较大，请耐心等待）…")
     run(pip_install, cwd=STAGING)
+    rewrite_pyvenv_cfg_relative(STAGING / ".venv")
+    prune_venv(STAGING / ".venv")
+    patch_embed_pth_venv_site_packages(py_root)
 
     if tmp_zip.exists():
         tmp_zip.unlink()
