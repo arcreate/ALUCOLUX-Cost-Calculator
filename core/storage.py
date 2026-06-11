@@ -106,15 +106,27 @@ def merge_color_rows(existing_rows: List[Dict[str, Any]], imported_rows: List[Di
     return sorted(merged.values(), key=lambda r: r["color_code"])
 
 
-def save_calculation_to_library(calc_library_dir: Path, payload: Dict[str, Any], app_version: str) -> str:
+def save_calculation_to_library(
+    calc_library_dir: Path,
+    payload: Dict[str, Any],
+    app_version: str,
+    owner_username: str,
+) -> str:
     """
     业务作用
     --------
     将一次计算结果保存到本地计算库，供后续优化模块多选调用。
+    owner_username 用于多用户场景下区分记录归属。
     """
     calc_library_dir.mkdir(parents=True, exist_ok=True)
     record_id = str(uuid.uuid4())
-    rec = {"record_id": record_id, "saved_at": datetime.now().isoformat(timespec="seconds"), "app_version": app_version, "payload": payload}
+    rec = {
+        "record_id": record_id,
+        "saved_at": datetime.now().isoformat(timespec="seconds"),
+        "app_version": app_version,
+        "owner_username": owner_username,
+        "payload": payload,
+    }
     (calc_library_dir / f"{record_id}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
     return record_id
 
@@ -138,9 +150,36 @@ def load_all_library_records(calc_library_dir: Path) -> List[Dict[str, Any]]:
     return rows
 
 
-def delete_library_records(calc_library_dir: Path, record_ids: List[str]) -> None:
-    """按记录 ID 批量删除本地计算库条目。"""
+def library_record_visible(rec: Dict[str, Any], role: str, username: str) -> bool:
+    """管理员可见全部；高级用户仅可见本人记录（无归属字段的旧记录仅管理员可见）。"""
+    if role == "admin":
+        return True
+    if role == "advanced":
+        return rec.get("owner_username") == username
+    return False
+
+
+def load_library_records_for_user(calc_library_dir: Path, role: str, username: str) -> List[Dict[str, Any]]:
+    return [r for r in load_all_library_records(calc_library_dir) if library_record_visible(r, role, username)]
+
+
+def delete_library_records(
+    calc_library_dir: Path,
+    record_ids: List[str],
+    *,
+    role: str,
+    username: str,
+) -> None:
+    """按记录 ID 批量删除；高级用户只能删除自己的记录。"""
+    if role not in ("admin", "advanced"):
+        raise PermissionError("permission_denied:calc_library_delete")
+    by_id = {r["record_id"]: r for r in load_all_library_records(calc_library_dir)}
     for rid in record_ids:
+        rec = by_id.get(rid)
+        if rec is None:
+            continue
+        if role == "advanced" and rec.get("owner_username") != username:
+            raise PermissionError("permission_denied:not_owner")
         p = calc_library_dir / f"{rid}.json"
         if p.is_file():
             p.unlink()

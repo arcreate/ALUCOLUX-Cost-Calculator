@@ -117,6 +117,22 @@ class TestEmbossingLossRegression(unittest.TestCase):
             calc_cost(order, vars_map)
 
 
+    def test_embossing_cost_positive_when_price_set(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(embossing_passes=2)
+        result = calc_cost(order, vars_map)
+        self.assertEqual(result["embossing_passes"], 2)
+        self.assertGreater(result["embossing_cost"], 0.0)
+
+    def test_color_face_paint_price_affects_paint_cost(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(coating_type="PVDF3", embossing_passes=0)
+        baseline = calc_cost(order, vars_map)["paint_cost"]
+        vars_map["FACE_PAINT_PRICE"] = float(vars_map["FACE_PAINT_PRICE"]) + 50.0
+        bumped = calc_cost(order, vars_map)["paint_cost"]
+        self.assertGreater(bumped, baseline)
+
+
 class TestOptimizerRegression(unittest.TestCase):
     def test_optimizer_generates_positive_saving_for_coordination_case(self) -> None:
         vars_map = load_default_vars()

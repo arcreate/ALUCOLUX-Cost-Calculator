@@ -357,7 +357,7 @@ def build_report(
         lines.append(
             f"- Base area for loss calculation = {'rounded area' if order['use_size_rounding_waste'] else 'contract area'} = {result['calc_base_area']:.3f} m²"
         )
-        embossing_passes_rep = int(result.get("embossing_passes", order.get("embossing_passes", 0)))
+        embossing_passes_rep = int(order.get("embossing_passes", 0))
         pre_embossing_area_rep = float(result.get("pre_embossing_area", result["calc_base_area"]))
         if embossing_passes_rep > 0:
             loss_rate_rep = float(result.get("embossing_loss_rate", vars_map.get("EMBOSSING_LOSS_PER_PASS", 0.0)))
@@ -399,7 +399,7 @@ def build_report(
         lines.append(
             f"- 损耗计算基准面积 = {'尺寸取整后面积' if order['use_size_rounding_waste'] else '合同面积'} = {result['calc_base_area']:.3f} ㎡"
         )
-        embossing_passes_rep = int(result.get("embossing_passes", order.get("embossing_passes", 0)))
+        embossing_passes_rep = int(order.get("embossing_passes", 0))
         pre_embossing_area_rep = float(result.get("pre_embossing_area", result["calc_base_area"]))
         if embossing_passes_rep > 0:
             loss_rate_rep = float(result.get("embossing_loss_rate", vars_map.get("EMBOSSING_LOSS_PER_PASS", 0.0)))
@@ -528,7 +528,7 @@ def build_report(
         lines.append(f"- Packaging: {fmt_money(result['packaging_cost'])} CNY")
         lines.append(
             f"- Embossing: {fmt_money(result['embossing_cost'])} CNY "
-            f"(passes={result.get('embossing_passes', 0)}, loss area={result.get('embossing_loss_area', 0.0):.3f} m²)"
+            f"(passes={embossing_passes_rep}, unit={vars_map.get('EMBOSSING_PRICE', 0.0)}, loss area={result.get('embossing_loss_area', 0.0):.3f} m²)"
         )
     else:
         lines.append(f"- 保护膜: {fmt_money(result['protect_film_cost'])} 元")
@@ -539,7 +539,7 @@ def build_report(
         lines.append(f"- 包装: {fmt_money(result['packaging_cost'])} 元")
         lines.append(
             f"- 压花: {fmt_money(result['embossing_cost'])} 元 "
-            f"（道数={result.get('embossing_passes', 0)}，损耗面积={result.get('embossing_loss_area', 0.0):.3f} ㎡）"
+            f"（道数={embossing_passes_rep}，单价={vars_map.get('EMBOSSING_PRICE', 0.0)} 元/㎡/道，损耗面积={result.get('embossing_loss_area', 0.0):.3f} ㎡）"
         )
     lines.append("")
     lines.append("Step 5: Total cost and unit price" if ui_lang == "English" else "步骤5：总成本与单价")
@@ -551,3 +551,25 @@ def build_report(
     )
     lines.append(f"- {'USD unit price' if ui_lang == 'English' else 'USD单价'}: {result['usd_price']:.4f} USD/㎡")
     return "\n".join(lines)
+
+
+def build_quote_summary(result: Dict[str, Any], ui_lang: str, fmt_money_fn) -> str:
+    """
+    普通用户报价摘要：仅总价、平米单价（元/㎡）、美元单价（USD/㎡），不含运算过程与分项成本。
+    """
+    total = fmt_money_fn(result["total_direct_cost"])
+    per_m2 = fmt_money_fn(result["break_even_per_m2"])
+    usd = f"{float(result['usd_price']):.4f}"
+    if ui_lang == "English":
+        return (
+            f"Quote summary\n"
+            f"- Total price: {total} CNY\n"
+            f"- Unit price: {per_m2} CNY/m²\n"
+            f"- Unit price: {usd} USD/m²"
+        )
+    return (
+        f"报价摘要\n"
+        f"- 总价：{total} 元\n"
+        f"- 平米单价：{per_m2} 元/㎡\n"
+        f"- 美元单价：{usd} USD/㎡"
+    )

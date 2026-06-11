@@ -213,6 +213,7 @@ def write_user_files() -> None:
                 "@echo off",
                 'cd /d "%~dp0"',
                 'set "ALUCOLUX_APP_ROOT=%CD%"',
+                'set "ALUCOLUX_AUTH_DISABLED=1"',
                 'if not exist "%~dp0python\\python.exe" (',
                 '  echo ERROR: missing runtime file: python\\python.exe',
                 "  echo Package may be incomplete. Please unzip again.",

@@ -15,7 +15,8 @@ from core import calculator as core_calculator
 from core import optimizer as core_optimizer
 from core import reporting as core_reporting
 from core import storage as core_storage
-from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH
+from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH, USERS_PATH
+from core import auth as core_auth
 
 
 FACTORY_DEFAULT_VARS: Dict[str, float] = {
@@ -71,7 +72,7 @@ COATING_UI_TO_CODE = {
     "2花（印花2层）": "PRINT2",
 }
 
-APP_VERSION = "v0.2.1"
+APP_VERSION = "v0.3.0"
 
 COATING_CODE_TO_LABEL = {
     "PVDF2": {"中文": "PVDF2（无印花）", "English": "PVDF2 (No print)"},
@@ -215,6 +216,31 @@ UI_TEXT = {
     },
     "project_name_suggest_caption": {"中文": "建议名称", "English": "Suggested name"},
     "project_name_use_suggested": {"中文": "填入建议名称", "English": "Use suggested name"},
+    "login_title": {"中文": "登录", "English": "Sign in"},
+    "login_user": {"中文": "用户名", "English": "Username"},
+    "login_password": {"中文": "密码", "English": "Password"},
+    "login_btn": {"中文": "登录", "English": "Sign in"},
+    "login_fail": {"中文": "用户名或密码错误", "English": "Invalid username or password"},
+    "logout_btn": {"中文": "退出登录", "English": "Sign out"},
+    "logged_in_as": {"中文": "当前用户", "English": "Signed in as"},
+    "role_label": {"中文": "角色", "English": "Role"},
+    "initial_admin_hint": {
+        "中文": "首次运行已创建管理员账号 admin，初始密码为 changeme（或通过环境变量 ALUCOLUX_INITIAL_ADMIN_PASSWORD 指定）。请尽快修改密码。",
+        "English": "Initial admin user 'admin' was created (default password changeme). Change it soon.",
+    },
+    "user_manage": {"中文": "账号管理", "English": "User accounts"},
+    "user_add": {"中文": "新增用户", "English": "Add user"},
+    "user_reset_pwd": {"中文": "重置密码", "English": "Reset password"},
+    "user_new_password": {"中文": "新密码", "English": "New password"},
+    "user_added": {"中文": "用户已创建", "English": "User created"},
+    "user_pwd_reset": {"中文": "密码已重置", "English": "Password reset"},
+    "user_exists": {"中文": "用户名已存在", "English": "Username already exists"},
+    "permission_denied": {"中文": "无权限执行此操作", "English": "Permission denied"},
+    "color_no_delete": {
+        "中文": "高级用户不可删除颜色记录；请保留所有原有颜色代码。",
+        "English": "Advanced users cannot delete color records; keep all existing color codes.",
+    },
+    "quote_summary_title": {"中文": "报价结果", "English": "Quote result"},
 }
 
 COLOR_DB_COLUMNS = ["color_code", "coating_type", "embossing_passes", "face_paint_price", "clear_paint_price", "updated_at"]
@@ -630,6 +656,111 @@ def _bump_color_db_editor_rev() -> None:
     st.session_state["_color_db_rev"] = int(st.session_state.get("_color_db_rev", 0)) + 1
 
 
+def _auth_role() -> str:
+    return str(st.session_state.get("auth_role", core_auth.ROLE_BASIC))
+
+
+def _auth_username() -> str:
+    return str(st.session_state.get("auth_user", ""))
+
+
+def _user_can(permission: str) -> bool:
+    return core_auth.can(_auth_role(), permission)
+
+
+def _role_display(ui_lang: str) -> str:
+    role = _auth_role()
+    labels = core_auth.ROLE_LABELS_ZH if ui_lang == "中文" else core_auth.ROLE_LABELS_EN
+    return labels.get(role, role)
+
+
+def _is_logged_in() -> bool:
+    user = st.session_state.get("auth_user")
+    role = st.session_state.get("auth_role")
+    return bool(user) and bool(role)
+
+
+def _ensure_auth_gate(ui_lang: str) -> None:
+    if core_auth.auth_disabled():
+        st.session_state.auth_user = "local"
+        st.session_state.auth_role = core_auth.ROLE_ADMIN
+        return
+    if core_auth.ensure_initial_admin(USERS_PATH):
+        st.session_state["_show_initial_admin_hint"] = True
+    if not _is_logged_in():
+        _render_login_page(ui_lang)
+        st.stop()
+
+
+def _render_login_page(ui_lang: str) -> None:
+    st.title(t("app_title", ui_lang))
+    st.subheader(t("login_title", ui_lang))
+    if st.session_state.get("_show_initial_admin_hint"):
+        st.info(t("initial_admin_hint", ui_lang))
+    with st.form("login_form", clear_on_submit=False):
+        username = st.text_input(t("login_user", ui_lang), key="login_username_input")
+        password = st.text_input(t("login_password", ui_lang), type="password", key="login_password_input")
+        submitted = st.form_submit_button(t("login_btn", ui_lang), type="primary")
+    if submitted:
+        role = core_auth.authenticate(USERS_PATH, username.strip(), password.strip())
+        if role is None:
+            st.error(t("login_fail", ui_lang))
+        else:
+            st.session_state.auth_user = username.strip()
+            st.session_state.auth_role = role
+            st.session_state.pop("_show_initial_admin_hint", None)
+            st.rerun()
+
+
+def _render_user_management(ui_lang: str) -> None:
+    if not _user_can("user_manage"):
+        return
+    with st.expander(t("user_manage", ui_lang), expanded=False):
+        users = core_auth.list_users(USERS_PATH)
+        if users:
+            st.caption(
+                ", ".join(f"{u['username']} ({_role_display_for(u['role'], ui_lang)})" for u in users)
+            )
+        st.markdown(f"**{t('user_add', ui_lang)}**")
+        new_user = st.text_input(t("login_user", ui_lang), key="admin_new_username")
+        new_pwd = st.text_input(t("login_password", ui_lang), type="password", key="admin_new_password")
+        new_role = st.selectbox(
+            t("role_label", ui_lang),
+            [core_auth.ROLE_ADMIN, core_auth.ROLE_ADVANCED, core_auth.ROLE_BASIC],
+            format_func=lambda r: _role_display_for(r, ui_lang),
+            key="admin_new_role",
+        )
+        if st.button(t("user_add", ui_lang), key="btn_admin_add_user"):
+            try:
+                core_auth.add_user(USERS_PATH, new_user, new_pwd, new_role)
+                st.success(t("user_added", ui_lang))
+                st.rerun()
+            except core_auth.AuthError as exc:
+                if str(exc) == "username_exists":
+                    st.error(t("user_exists", ui_lang))
+                else:
+                    st.error(f"{t('permission_denied', ui_lang)}: {exc}")
+        st.markdown(f"**{t('user_reset_pwd', ui_lang)}**")
+        if users:
+            reset_user = st.selectbox(
+                t("login_user", ui_lang),
+                options=[u["username"] for u in users],
+                key="admin_reset_user_select",
+            )
+            reset_pwd = st.text_input(t("user_new_password", ui_lang), type="password", key="admin_reset_password")
+        if users and st.button(t("user_reset_pwd", ui_lang), key="btn_admin_reset_pwd"):
+            try:
+                core_auth.reset_user_password(USERS_PATH, reset_user, reset_pwd)
+                st.success(t("user_pwd_reset", ui_lang))
+            except core_auth.AuthError as exc:
+                st.error(f"{t('permission_denied', ui_lang)}: {exc}")
+
+
+def _role_display_for(role: str, ui_lang: str) -> str:
+    labels = core_auth.ROLE_LABELS_ZH if ui_lang == "中文" else core_auth.ROLE_LABELS_EN
+    return labels.get(role, role)
+
+
 def main() -> None:
     """
     业务作用
@@ -643,6 +774,10 @@ def main() -> None:
     - main 负责把输入、按钮、结果、下载、优化串起来
     """
     st.set_page_config(page_title="ALUCOLUX® Cost Calculator", layout="wide")
+
+    if "ui_lang" not in st.session_state:
+        st.session_state.ui_lang = "中文"
+    _ensure_auth_gate(st.session_state.ui_lang)
 
     if "vars_map" not in st.session_state:
         st.session_state.vars_map = load_default_vars()
@@ -663,8 +798,8 @@ def main() -> None:
         st.session_state.last_optimizer_payload = None
     if "calc_lib_opt_ids" not in st.session_state:
         st.session_state.calc_lib_opt_ids = None
-    if "ui_lang" not in st.session_state:
-        st.session_state.ui_lang = "中文"
+    if "last_calc_result" not in st.session_state:
+        st.session_state.last_calc_result = None
     if "color_db" not in st.session_state:
         st.session_state.color_db = load_color_db()
     if "_color_db_rev" not in st.session_state:
@@ -678,17 +813,33 @@ def main() -> None:
     if "vars_map_widget_version" not in st.session_state:
         st.session_state.vars_map_widget_version = 0
 
+    role = _auth_role()
+    username = _auth_username()
+
     with st.sidebar:
-        st.subheader(t("config", st.session_state.ui_lang))
         ui_lang = st.selectbox(t("lang", st.session_state.ui_lang), ["中文", "English"], index=0 if st.session_state.ui_lang == "中文" else 1)
         st.session_state.ui_lang = ui_lang
+        st.caption(f"{t('logged_in_as', ui_lang)}: **{username}**")
+        st.caption(f"{t('role_label', ui_lang)}: {_role_display(ui_lang)}")
+        if st.button(t("logout_btn", ui_lang), key="btn_logout"):
+            st.session_state.auth_user = None
+            st.session_state.auth_role = None
+            st.rerun()
+        if st.session_state.pop("_show_initial_admin_hint", False):
+            st.warning(t("initial_admin_hint", ui_lang))
+
+        st.subheader(t("config", ui_lang))
         # 侧栏先于主区：先把上一轮用户在「变量参数」里改过的值从控件 key 拉回 vars_map
         _sync_vars_map_from_var_widget_keys()
         if st.session_state.pop("_show_config_import_ok", False):
             st.success(t("import_ok", ui_lang))
         if st.session_state.pop("_show_config_restore_ok", False):
             st.success(t("restored", ui_lang))
-        uploaded = st.file_uploader(t("import_cfg", ui_lang), type=["json"])
+
+        if _user_can("config_import"):
+            uploaded = st.file_uploader(t("import_cfg", ui_lang), type=["json"])
+        else:
+            uploaded = None
         if uploaded is not None:
             _cfg_blob = uploaded.getvalue()
             _cfg_sig = f"{uploaded.name}:{hashlib.md5(_cfg_blob).hexdigest()}"
@@ -712,15 +863,16 @@ def main() -> None:
                 except Exception as exc:
                     st.error(f"{t('import_fail', ui_lang)}: {exc}")
 
-        cfg_text = _sidebar_config_export_text()
-        st.download_button(
-            label=t("export_cfg", ui_lang),
-            data=cfg_text,
-            file_name="alucolux_config.json",
-            mime="application/json",
-        )
+        if _user_can("config_export"):
+            cfg_text = _sidebar_config_export_text()
+            st.download_button(
+                label=t("export_cfg", ui_lang),
+                data=cfg_text,
+                file_name="alucolux_config.json",
+                mime="application/json",
+            )
 
-        if st.button(t("restore_default", ui_lang)):
+        if _user_can("restore_default") and st.button(t("restore_default", ui_lang)):
             st.session_state.vars_map = load_default_vars()
             _refresh_vars_widgets_from_vars_map()
             st.session_state.last_report = ""
@@ -728,110 +880,120 @@ def main() -> None:
             st.session_state.last_optimizer_payload = None
             st.session_state["_show_config_restore_ok"] = True
             st.rerun()
-        if st.button(t("save_default", ui_lang)):
+        if _user_can("save_default") and st.button(t("save_default", ui_lang)):
             try:
                 save_default_vars(st.session_state.vars_map)
                 st.success(t("saved_default", ui_lang))
             except Exception as exc:
                 st.error(f"{t('save_default_fail', ui_lang)}: {exc}")
-        st.caption(t("restore_default_hint", ui_lang))
+        if _user_can("restore_default"):
+            st.caption(t("restore_default_hint", ui_lang))
 
-        with st.expander(t("color_db", ui_lang), expanded=False):
-            st.caption(f"{t('color_count', ui_lang)}: {len(st.session_state.color_db)}")
-            st.download_button(
-                label=t("export_color_db", ui_lang),
-                data=color_db_to_csv_text(st.session_state.color_db),
-                file_name="color_cost_db.csv",
-                mime="text/csv",
-            )
+        _render_user_management(ui_lang)
 
-            import_mode = st.radio(
-                t("import_mode", ui_lang),
-                ["merge", "replace"],
-                format_func=lambda v: t("mode_merge", ui_lang) if v == "merge" else t("mode_replace", ui_lang),
-                horizontal=True,
-            )
-            dup_strategy = st.selectbox(
-                t("dup_strategy", ui_lang),
-                ["latest", "imported", "existing"],
-                format_func=lambda v: (
-                    t("dup_latest", ui_lang) if v == "latest" else t("dup_imported", ui_lang) if v == "imported" else t("dup_existing", ui_lang)
-                ),
-            )
-            color_uploaded = st.file_uploader(t("import_color_db", ui_lang), type=["csv"], key="color_db_import")
-            if color_uploaded is not None:
-                # 避免 file_uploader 在多次重跑中对同一文件反复合并；用内容哈希区分同名的更新文件
-                _blob = color_uploaded.getvalue()
-                sig = f"{color_uploaded.name}:{hashlib.md5(_blob).hexdigest()}"
-                if st.session_state.get("_color_csv_sig") != sig:
-                    st.session_state["_color_csv_sig"] = sig
-                    try:
-                        text = _blob.decode("utf-8-sig")
-                        reader = csv.DictReader(io.StringIO(text))
-                        imported_rows = []
-                        for row in reader:
-                            normalized = normalize_color_record(row)
-                            if normalized["color_code"]:
-                                imported_rows.append(normalized)
-                        if import_mode == "replace":
-                            merged_rows = merge_color_rows([], imported_rows, dup_strategy)
+        if _user_can("color_csv_import") or _user_can("color_csv_export") or _user_can("color_add"):
+            with st.expander(t("color_db", ui_lang), expanded=False):
+                st.caption(f"{t('color_count', ui_lang)}: {len(st.session_state.color_db)}")
+                if _user_can("color_csv_export"):
+                    st.download_button(
+                        label=t("export_color_db", ui_lang),
+                        data=color_db_to_csv_text(st.session_state.color_db),
+                        file_name="color_cost_db.csv",
+                        mime="text/csv",
+                    )
+
+                if _user_can("color_csv_import"):
+                    import_mode = st.radio(
+                        t("import_mode", ui_lang),
+                        ["merge", "replace"],
+                        format_func=lambda v: t("mode_merge", ui_lang) if v == "merge" else t("mode_replace", ui_lang),
+                        horizontal=True,
+                    )
+                    dup_strategy = st.selectbox(
+                        t("dup_strategy", ui_lang),
+                        ["latest", "imported", "existing"],
+                        format_func=lambda v: (
+                            t("dup_latest", ui_lang)
+                            if v == "latest"
+                            else t("dup_imported", ui_lang)
+                            if v == "imported"
+                            else t("dup_existing", ui_lang)
+                        ),
+                    )
+                    color_uploaded = st.file_uploader(t("import_color_db", ui_lang), type=["csv"], key="color_db_import")
+                    if color_uploaded is not None:
+                        _blob = color_uploaded.getvalue()
+                        sig = f"{color_uploaded.name}:{hashlib.md5(_blob).hexdigest()}"
+                        if st.session_state.get("_color_csv_sig") != sig:
+                            st.session_state["_color_csv_sig"] = sig
+                            try:
+                                text = _blob.decode("utf-8-sig")
+                                reader = csv.DictReader(io.StringIO(text))
+                                imported_rows = []
+                                for row in reader:
+                                    normalized = normalize_color_record(row)
+                                    if normalized["color_code"]:
+                                        imported_rows.append(normalized)
+                                if import_mode == "replace":
+                                    merged_rows = merge_color_rows([], imported_rows, dup_strategy)
+                                else:
+                                    merged_rows = merge_color_rows(st.session_state.color_db, imported_rows, dup_strategy)
+                                st.session_state.color_db = merged_rows
+                                save_color_db(merged_rows)
+                                _bump_color_db_editor_rev()
+                                st.success(f"{t('import_color_ok', ui_lang)}: {len(imported_rows)}")
+                            except Exception as exc:
+                                st.error(f"{t('import_color_fail', ui_lang)}: {exc}")
+
+                if _user_can("color_add"):
+                    st.markdown(f"**{t('sample_color', ui_lang)}**")
+                    add_color_code = st.text_input(t("add_color_code", ui_lang), key="new_color_code")
+                    add_coating = st.selectbox(
+                        t("coating", ui_lang),
+                        ["PVDF2", "PVDF3", "PRINT1", "PRINT2"],
+                        format_func=lambda code: COATING_CODE_TO_LABEL[code][ui_lang],
+                        key="new_color_coating",
+                    )
+                    add_embossing = st.selectbox(
+                        t("embossing_passes", ui_lang),
+                        options=[0, 1, 2],
+                        index=0,
+                        key="new_color_embossing",
+                    )
+                    add_face = st.number_input(
+                        format_var_label("FACE_PAINT_PRICE", ui_lang),
+                        value=float(st.session_state.vars_map["FACE_PAINT_PRICE"]),
+                        format="%.6f",
+                        key="new_color_face_price",
+                    )
+                    add_clear = st.number_input(
+                        format_var_label("CLEAR_PAINT_PRICE", ui_lang),
+                        value=float(st.session_state.vars_map["CLEAR_PAINT_PRICE"]),
+                        format="%.6f",
+                        key="new_color_clear_price",
+                    )
+                    if st.button(t("add_color_btn", ui_lang), key="add_color_record_btn"):
+                        code = add_color_code.strip()
+                        if not code:
+                            st.error(t("add_color_invalid", ui_lang))
                         else:
-                            merged_rows = merge_color_rows(st.session_state.color_db, imported_rows, dup_strategy)
-                        st.session_state.color_db = merged_rows
-                        save_color_db(merged_rows)
-                        _bump_color_db_editor_rev()
-                        st.success(f"{t('import_color_ok', ui_lang)}: {len(imported_rows)}")
-                    except Exception as exc:
-                        st.error(f"{t('import_color_fail', ui_lang)}: {exc}")
-
-            st.markdown(f"**{t('sample_color', ui_lang)}**")
-            add_color_code = st.text_input(t("add_color_code", ui_lang), key="new_color_code")
-            add_coating = st.selectbox(
-                t("coating", ui_lang),
-                ["PVDF2", "PVDF3", "PRINT1", "PRINT2"],
-                format_func=lambda code: COATING_CODE_TO_LABEL[code][ui_lang],
-                key="new_color_coating",
-            )
-            add_embossing = st.selectbox(
-                t("embossing_passes", ui_lang),
-                options=[0, 1, 2],
-                index=0,
-                key="new_color_embossing",
-            )
-            add_face = st.number_input(
-                format_var_label("FACE_PAINT_PRICE", ui_lang),
-                value=float(st.session_state.vars_map["FACE_PAINT_PRICE"]),
-                format="%.6f",
-                key="new_color_face_price",
-            )
-            add_clear = st.number_input(
-                format_var_label("CLEAR_PAINT_PRICE", ui_lang),
-                value=float(st.session_state.vars_map["CLEAR_PAINT_PRICE"]),
-                format="%.6f",
-                key="new_color_clear_price",
-            )
-            if st.button(t("add_color_btn", ui_lang), key="add_color_record_btn"):
-                code = add_color_code.strip()
-                if not code:
-                    st.error(t("add_color_invalid", ui_lang))
-                else:
-                    new_row = {
-                        "color_code": code,
-                        "coating_type": add_coating,
-                        "embossing_passes": int(add_embossing),
-                        "face_paint_price": float(add_face),
-                        "clear_paint_price": float(add_clear),
-                        "updated_at": datetime.now().isoformat(timespec="seconds"),
-                    }
-                    st.session_state.color_db = merge_color_rows(st.session_state.color_db, [new_row], "imported")
-                    save_color_db(st.session_state.color_db)
-                    _bump_color_db_editor_rev()
-                    st.success(t("add_color_ok", ui_lang))
+                            new_row = {
+                                "color_code": code,
+                                "coating_type": add_coating,
+                                "embossing_passes": int(add_embossing),
+                                "face_paint_price": float(add_face),
+                                "clear_paint_price": float(add_clear),
+                                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                            }
+                            st.session_state.color_db = merge_color_rows(st.session_state.color_db, [new_row], "imported")
+                            save_color_db(st.session_state.color_db)
+                            _bump_color_db_editor_rev()
+                            st.success(t("add_color_ok", ui_lang))
 
     st.title(t("app_title", ui_lang))
     st.subheader(t("order", ui_lang))
 
-    lib_project_names = collect_library_project_names()
+    lib_project_names = collect_library_project_names(role, username)
     # 必须在 text_input 实例化之前写入 order_project_name（保存到库 / 填入建议名 等场景用临时键延后应用）
     pending_name = st.session_state.pop("_pending_order_project_name", None)
     if pending_name is not None:
@@ -897,13 +1059,11 @@ def main() -> None:
         coating_ui = st.selectbox(
             t("coating", ui_lang),
             coating_options,
-            index=["PVDF2", "PVDF3", "PRINT1", "PRINT2"].index(selected_coating_code),
             key="order_coating_select",
         )
         embossing_passes = st.selectbox(
             t("embossing_passes", ui_lang),
             options=[0, 1, 2],
-            index=0,
             key="order_embossing_select",
         )
         auto_trial = st.checkbox(t("trial_auto", ui_lang), value=True)
@@ -1009,69 +1169,82 @@ def main() -> None:
         st.session_state.vars_map["AL_PRICE"] = float(st.session_state.vars_map["AL_PRICE_A00_CHANGJIANG"])
         st.caption(t("a00_unit_note", ui_lang))
 
-    with st.expander(t("vars", ui_lang), expanded=True):
-        _hidden_var_keys = {"AL_PRICE", "AL_PRICE_A00_CHANGJIANG"}
-        _vm = int(st.session_state.get("vars_map_widget_version", 0))
-        keys = sorted(k for k in st.session_state.vars_map.keys() if k not in _hidden_var_keys)
-        cols = st.columns(3)
-        for idx, key in enumerate(keys):
-            col = cols[idx % 3]
-            with col:
-                _len_m_vars = {"TRIAL_LENGTH", "HEAD_TAIL_LENGTH"}
-                if key in _len_m_vars:
-                    _fmt, _step = "%.3f", 0.001
-                elif key == "OPEN_MACHINE_THRESHOLD":
-                    _fmt, _step = "%.3f", 1.0
-                else:
-                    _fmt, _step = "%.6f", 0.000001
-                st.session_state.vars_map[key] = st.number_input(
-                    format_var_label(key, ui_lang),
-                    value=float(st.session_state.vars_map[key]),
-                    step=_step,
-                    format=_fmt,
-                    key=f"var_{key}_vm{_vm}",
-                    on_change=_push_var_from_widget_to_vars_map,
-                    args=(key, _vm),
-                )
+    if _user_can("vars_edit"):
+        with st.expander(t("vars", ui_lang), expanded=True):
+            _hidden_var_keys = {"AL_PRICE", "AL_PRICE_A00_CHANGJIANG"}
+            _vm = int(st.session_state.get("vars_map_widget_version", 0))
+            keys = sorted(k for k in st.session_state.vars_map.keys() if k not in _hidden_var_keys)
+            cols = st.columns(3)
+            for idx, key in enumerate(keys):
+                col = cols[idx % 3]
+                with col:
+                    _len_m_vars = {"TRIAL_LENGTH", "HEAD_TAIL_LENGTH"}
+                    if key in _len_m_vars:
+                        _fmt, _step = "%.3f", 0.001
+                    elif key == "OPEN_MACHINE_THRESHOLD":
+                        _fmt, _step = "%.3f", 1.0
+                    else:
+                        _fmt, _step = "%.6f", 0.000001
+                    st.session_state.vars_map[key] = st.number_input(
+                        format_var_label(key, ui_lang),
+                        value=float(st.session_state.vars_map[key]),
+                        step=_step,
+                        format=_fmt,
+                        key=f"var_{key}_vm{_vm}",
+                        on_change=_push_var_from_widget_to_vars_map,
+                        args=(key, _vm),
+                    )
 
-    with st.expander(t("color_maintain", ui_lang), expanded=False):
-        filter_text = st.text_input(t("color_filter", ui_lang), key="color_filter_text")
-        base_rows = st.session_state.color_db.copy()
-        if filter_text.strip():
-            f = filter_text.strip().upper()
-            base_rows = [r for r in base_rows if f in r.get("color_code", "").upper()]
-        _cdb_rev = int(st.session_state.get("_color_db_rev", 0))
-        edited_rows = st.data_editor(
-            base_rows,
-            num_rows="dynamic",
-            use_container_width=True,
-            column_config={
-                "color_code": st.column_config.TextColumn("color_code", required=True),
-                "coating_type": st.column_config.SelectboxColumn(
-                    "coating_type", options=["PVDF2", "PVDF3", "PRINT1", "PRINT2"], required=True
-                ),
-                "embossing_passes": st.column_config.SelectboxColumn("embossing_passes", options=[0, 1, 2], required=True),
-                "face_paint_price": st.column_config.NumberColumn("face_paint_price", format="%.4f", required=True),
-                "clear_paint_price": st.column_config.NumberColumn("clear_paint_price", format="%.4f", required=True),
-                "updated_at": st.column_config.TextColumn("updated_at"),
-            },
-            key=f"color_db_editor_v{_cdb_rev}",
-        )
-        if st.button(t("color_save_table", ui_lang), key="save_color_table_btn"):
-            normalized_rows = []
-            for row in edited_rows:
-                normalized = normalize_color_record(row)
-                if normalized["color_code"]:
-                    # Table edit is a maintenance operation, timestamp auto-refresh.
-                    normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
-                    normalized_rows.append(normalized)
-            if not normalized_rows:
-                st.warning(t("color_table_empty_warn", ui_lang))
-            else:
-                st.session_state.color_db = merge_color_rows([], normalized_rows, "latest")
-                save_color_db(st.session_state.color_db)
-                _bump_color_db_editor_rev()
-                st.success(t("color_table_saved", ui_lang))
+    if _user_can("color_table_edit"):
+        with st.expander(t("color_maintain", ui_lang), expanded=False):
+            filter_text = st.text_input(t("color_filter", ui_lang), key="color_filter_text")
+            base_rows = st.session_state.color_db.copy()
+            if filter_text.strip():
+                f = filter_text.strip().upper()
+                base_rows = [r for r in base_rows if f in r.get("color_code", "").upper()]
+            _cdb_rev = int(st.session_state.get("_color_db_rev", 0))
+            edited_rows = st.data_editor(
+                base_rows,
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "color_code": st.column_config.TextColumn("color_code", required=True),
+                    "coating_type": st.column_config.SelectboxColumn(
+                        "coating_type", options=["PVDF2", "PVDF3", "PRINT1", "PRINT2"], required=True
+                    ),
+                    "embossing_passes": st.column_config.SelectboxColumn(
+                        "embossing_passes", options=[0, 1, 2], required=True
+                    ),
+                    "face_paint_price": st.column_config.NumberColumn("face_paint_price", format="%.4f", required=True),
+                    "clear_paint_price": st.column_config.NumberColumn("clear_paint_price", format="%.4f", required=True),
+                    "updated_at": st.column_config.TextColumn("updated_at"),
+                },
+                key=f"color_db_editor_v{_cdb_rev}",
+            )
+            if st.button(t("color_save_table", ui_lang), key="save_color_table_btn"):
+                normalized_rows = []
+                for row in edited_rows:
+                    normalized = normalize_color_record(row)
+                    if normalized["color_code"]:
+                        normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
+                        normalized_rows.append(normalized)
+                if not normalized_rows:
+                    st.warning(t("color_table_empty_warn", ui_lang))
+                elif role == core_auth.ROLE_ADVANCED:
+                    old_codes = {r["color_code"].strip().upper() for r in st.session_state.color_db if r.get("color_code")}
+                    new_codes = {r["color_code"].strip().upper() for r in normalized_rows}
+                    if not old_codes.issubset(new_codes):
+                        st.error(t("color_no_delete", ui_lang))
+                    else:
+                        st.session_state.color_db = merge_color_rows([], normalized_rows, "latest")
+                        save_color_db(st.session_state.color_db)
+                        _bump_color_db_editor_rev()
+                        st.success(t("color_table_saved", ui_lang))
+                else:
+                    st.session_state.color_db = merge_color_rows([], normalized_rows, "latest")
+                    save_color_db(st.session_state.color_db)
+                    _bump_color_db_editor_rev()
+                    st.success(t("color_table_saved", ui_lang))
 
     order = {
         "project_name": str(st.session_state.get("order_project_name", "")).strip(),
@@ -1093,6 +1266,10 @@ def main() -> None:
 
     if st.button(t("calc", ui_lang), type="primary"):
         _sync_vars_map_from_var_widget_keys()
+        # 选色后面漆/清漆价写入 vars_map；管理员若有变量区控件，sync 可能覆盖，计算前再应用一次颜色库价格。
+        if color_profile:
+            st.session_state.vars_map["FACE_PAINT_PRICE"] = float(color_profile["face_paint_price"])
+            st.session_state.vars_map["CLEAR_PAINT_PRICE"] = float(color_profile["clear_paint_price"])
         if (
             contract_area <= 0
             or width_m <= 0
@@ -1105,7 +1282,7 @@ def main() -> None:
             _refresh_config_export_cache()
             return
         pn_calc = str(st.session_state.get("order_project_name", "")).strip()
-        if pn_calc in collect_library_project_names():
+        if pn_calc in collect_library_project_names(role, username):
             st.error(t("project_name_dup_block", ui_lang))
             _refresh_config_export_cache()
             return
@@ -1118,118 +1295,134 @@ def main() -> None:
             return
         report = build_report(order, st.session_state.vars_map, result, ui_lang)
         opt_payload = build_optimizer_payload(order, st.session_state.vars_map, result)
-        st.session_state.last_optimizer_payload = opt_payload
-        export_report = attach_optimizer_payload(report, opt_payload)
-        st.session_state.last_report = report
-        st.session_state.last_export_report = export_report
+        st.session_state.last_calc_result = result
+        if _user_can("report_full"):
+            st.session_state.last_optimizer_payload = opt_payload
+            export_report = attach_optimizer_payload(report, opt_payload)
+            st.session_state.last_report = report
+            st.session_state.last_export_report = export_report
+        else:
+            st.session_state.last_optimizer_payload = None
+            st.session_state.last_report = ""
+            st.session_state.last_export_report = ""
 
-    if st.session_state.last_report:
+    if st.session_state.last_calc_result is not None:
         st.subheader(t("output", ui_lang))
-        st.text(st.session_state.last_report)
+        if _user_can("report_full") and st.session_state.last_report:
+            st.text(st.session_state.last_report)
 
-        if st.session_state.last_optimizer_payload is not None:
-            if st.button(t("calc_library_save", ui_lang), key="btn_save_to_calc_library"):
-                save_calculation_to_library(st.session_state.last_optimizer_payload)
-                st.success(t("calc_library_saved", ui_lang))
-                st.session_state["_pending_order_project_name"] = suggest_default_project_name(
-                    ui_lang, collect_library_project_names()
-                )
-                st.rerun()
-
-        fmt = st.selectbox(t("export_format", ui_lang), ["TXT", "Markdown", "RTF"], index=0)
-        if fmt == "TXT":
-            data = st.session_state.last_export_report or st.session_state.last_report
-            filename = "alucolux_report.txt"
-            mime = "text/plain"
-        elif fmt == "Markdown":
-            data = st.session_state.last_export_report or st.session_state.last_report
-            filename = "alucolux_report.md"
-            mime = "text/markdown"
-        else:
-            data = to_rtf(st.session_state.last_export_report or st.session_state.last_report)
-            filename = "alucolux_report.rtf"
-            mime = "application/rtf"
-
-        st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime)
-
-    st.subheader(t("optimizer", ui_lang))
-    st.caption(t("optimizer_desc", ui_lang))
-    st.caption(t("optimizer_assumption", ui_lang))
-
-    st.markdown(f"#### {t('calc_library', ui_lang)}")
-    lib_records = load_all_library_records()
-    if lib_records:
-        record_ids = [r["record_id"] for r in lib_records]
-        id_to_label = {
-            r["record_id"]: f"{library_record_label(r, ui_lang)} [{r['record_id'][:8]}]" for r in lib_records
-        }
-        pick_ids = st.multiselect(
-            t("calc_library_select", ui_lang),
-            options=record_ids,
-            format_func=lambda i: id_to_label.get(i, i),
-            key="calc_library_multiselect",
-        )
-        col_lib_run, col_lib_del = st.columns(2)
-        with col_lib_run:
-            if st.button(t("calc_library_run", ui_lang), key="btn_calc_library_run"):
-                if len(pick_ids) < 2:
-                    st.warning(t("calc_library_need_two", ui_lang))
-                else:
-                    st.session_state.calc_lib_opt_ids = list(pick_ids)
+            if st.session_state.last_optimizer_payload is not None and _user_can("calc_library_save"):
+                if st.button(t("calc_library_save", ui_lang), key="btn_save_to_calc_library"):
+                    save_calculation_to_library(st.session_state.last_optimizer_payload, username)
+                    st.success(t("calc_library_saved", ui_lang))
+                    st.session_state["_pending_order_project_name"] = suggest_default_project_name(
+                        ui_lang, collect_library_project_names(role, username)
+                    )
                     st.rerun()
-        with col_lib_del:
-            if st.button(t("calc_library_delete", ui_lang), key="btn_calc_library_delete"):
-                if not pick_ids:
-                    st.warning(t("calc_library_need_pick_del", ui_lang))
+
+            if _user_can("report_export"):
+                fmt = st.selectbox(t("export_format", ui_lang), ["TXT", "Markdown", "RTF"], index=0)
+                if fmt == "TXT":
+                    data = st.session_state.last_export_report or st.session_state.last_report
+                    filename = "alucolux_report.txt"
+                    mime = "text/plain"
+                elif fmt == "Markdown":
+                    data = st.session_state.last_export_report or st.session_state.last_report
+                    filename = "alucolux_report.md"
+                    mime = "text/markdown"
                 else:
-                    delete_library_records(pick_ids)
-                    if st.session_state.calc_lib_opt_ids:
-                        remaining = {r["record_id"] for r in load_all_library_records()}
-                        if not all(x in remaining for x in st.session_state.calc_lib_opt_ids):
-                            st.session_state.calc_lib_opt_ids = None
-                    st.success(t("calc_library_deleted", ui_lang))
-                    st.rerun()
-        if st.session_state.calc_lib_opt_ids:
-            lib_reload = load_all_library_records()
-            id_set = {r["record_id"] for r in lib_reload}
-            if all(rid in id_set for rid in st.session_state.calc_lib_opt_ids):
-                payloads_run: List[Dict[str, Any]] = []
-                for rid in st.session_state.calc_lib_opt_ids:
-                    for r in lib_reload:
-                        if r["record_id"] == rid:
-                            payloads_run.append(copy.deepcopy(r["payload"]))
-                            break
-                render_optimization_analysis(payloads_run, ui_lang, download_key="dl_opt_library")
-                if st.button(t("calc_library_clear_view", ui_lang), key="btn_calc_library_clear"):
+                    data = to_rtf(st.session_state.last_export_report or st.session_state.last_report)
+                    filename = "alucolux_report.rtf"
+                    mime = "application/rtf"
+                st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime)
+        elif _user_can("quote_summary"):
+            st.markdown(f"### {t('quote_summary_title', ui_lang)}")
+            st.markdown(
+                core_reporting.build_quote_summary(st.session_state.last_calc_result, ui_lang, fmt_money)
+            )
+
+    if _user_can("optimizer"):
+        st.subheader(t("optimizer", ui_lang))
+        st.caption(t("optimizer_desc", ui_lang))
+        st.caption(t("optimizer_assumption", ui_lang))
+
+        st.markdown(f"#### {t('calc_library', ui_lang)}")
+        lib_records = load_all_library_records(role, username)
+        if lib_records:
+            record_ids = [r["record_id"] for r in lib_records]
+            id_to_label = {
+                r["record_id"]: f"{library_record_label(r, ui_lang)} [{r['record_id'][:8]}]" for r in lib_records
+            }
+            pick_ids = st.multiselect(
+                t("calc_library_select", ui_lang),
+                options=record_ids,
+                format_func=lambda i: id_to_label.get(i, i),
+                key="calc_library_multiselect",
+            )
+            col_lib_run, col_lib_del = st.columns(2)
+            with col_lib_run:
+                if st.button(t("calc_library_run", ui_lang), key="btn_calc_library_run"):
+                    if len(pick_ids) < 2:
+                        st.warning(t("calc_library_need_two", ui_lang))
+                    else:
+                        st.session_state.calc_lib_opt_ids = list(pick_ids)
+                        st.rerun()
+            with col_lib_del:
+                if _user_can("calc_library_delete") and st.button(t("calc_library_delete", ui_lang), key="btn_calc_library_delete"):
+                    if not pick_ids:
+                        st.warning(t("calc_library_need_pick_del", ui_lang))
+                    else:
+                        try:
+                            delete_library_records(pick_ids, role, username)
+                            if st.session_state.calc_lib_opt_ids:
+                                remaining = {r["record_id"] for r in load_all_library_records(role, username)}
+                                if not all(x in remaining for x in st.session_state.calc_lib_opt_ids):
+                                    st.session_state.calc_lib_opt_ids = None
+                            st.success(t("calc_library_deleted", ui_lang))
+                            st.rerun()
+                        except PermissionError:
+                            st.error(t("permission_denied", ui_lang))
+            if st.session_state.calc_lib_opt_ids:
+                lib_reload = load_all_library_records(role, username)
+                id_set = {r["record_id"] for r in lib_reload}
+                if all(rid in id_set for rid in st.session_state.calc_lib_opt_ids):
+                    payloads_run: List[Dict[str, Any]] = []
+                    for rid in st.session_state.calc_lib_opt_ids:
+                        for r in lib_reload:
+                            if r["record_id"] == rid:
+                                payloads_run.append(copy.deepcopy(r["payload"]))
+                                break
+                    render_optimization_analysis(payloads_run, ui_lang, download_key="dl_opt_library")
+                    if st.button(t("calc_library_clear_view", ui_lang), key="btn_calc_library_clear"):
+                        st.session_state.calc_lib_opt_ids = None
+                        st.rerun()
+                else:
                     st.session_state.calc_lib_opt_ids = None
-                    st.rerun()
-            else:
-                st.session_state.calc_lib_opt_ids = None
-    else:
-        st.caption(t("calc_library_empty", ui_lang))
-        st.session_state.calc_lib_opt_ids = None
-
-    st.markdown(f"#### {t('optimizer_from_file', ui_lang)}")
-    uploaded_reports = st.file_uploader(
-        t("optimizer_upload", ui_lang),
-        type=["txt", "md", "rtf"],
-        accept_multiple_files=True,
-        key="optimizer_report_upload",
-    )
-    if uploaded_reports:
-        valid_payloads: List[Dict[str, Any]] = []
-        invalid_files: List[str] = []
-        for f in uploaded_reports:
-            try:
-                valid_payloads.append(parse_optimizer_file(f))
-            except Exception:
-                invalid_files.append(f.name)
-        if valid_payloads:
-            render_optimization_analysis(valid_payloads, ui_lang, download_key="dl_opt_upload")
         else:
-            st.info(t("optimizer_no_data", ui_lang))
-        if invalid_files:
-            st.warning(f"{t('optimizer_invalid', ui_lang)}: {', '.join(invalid_files)}")
+            st.caption(t("calc_library_empty", ui_lang))
+            st.session_state.calc_lib_opt_ids = None
+
+        st.markdown(f"#### {t('optimizer_from_file', ui_lang)}")
+        uploaded_reports = st.file_uploader(
+            t("optimizer_upload", ui_lang),
+            type=["txt", "md", "rtf"],
+            accept_multiple_files=True,
+            key="optimizer_report_upload",
+        )
+        if uploaded_reports:
+            valid_payloads: List[Dict[str, Any]] = []
+            invalid_files: List[str] = []
+            for f in uploaded_reports:
+                try:
+                    valid_payloads.append(parse_optimizer_file(f))
+                except Exception:
+                    invalid_files.append(f.name)
+            if valid_payloads:
+                render_optimization_analysis(valid_payloads, ui_lang, download_key="dl_opt_upload")
+            else:
+                st.info(t("optimizer_no_data", ui_lang))
+            if invalid_files:
+                st.warning(f"{t('optimizer_invalid', ui_lang)}: {', '.join(invalid_files)}")
 
     _refresh_config_export_cache()
 
@@ -1297,18 +1490,20 @@ def merge_color_rows(existing_rows: list[Dict[str, Any]], imported_rows: list[Di
     return core_storage.merge_color_rows(existing_rows, imported_rows, strategy, normalize_color_record)
 
 
-def save_calculation_to_library(payload: Dict[str, Any]) -> str:
-    return core_storage.save_calculation_to_library(CALC_LIBRARY_DIR, payload, APP_VERSION)
+def save_calculation_to_library(payload: Dict[str, Any], owner_username: str) -> str:
+    return core_storage.save_calculation_to_library(
+        CALC_LIBRARY_DIR, payload, APP_VERSION, owner_username
+    )
 
 
-def load_all_library_records() -> List[Dict[str, Any]]:
-    return core_storage.load_all_library_records(CALC_LIBRARY_DIR)
+def load_all_library_records(role: str, username: str) -> List[Dict[str, Any]]:
+    return core_storage.load_library_records_for_user(CALC_LIBRARY_DIR, role, username)
 
 
-def collect_library_project_names() -> set[str]:
-    """Strip-matched project names from all saved calculation payloads (including empty string if present)."""
+def collect_library_project_names(role: str, username: str) -> set[str]:
+    """Strip-matched project names from visible saved calculation payloads."""
     names: set[str] = set()
-    for rec in load_all_library_records():
+    for rec in load_all_library_records(role, username):
         p = rec.get("payload") or {}
         names.add(str(p.get("project_name", "")).strip())
     return names
@@ -1324,8 +1519,10 @@ def suggest_default_project_name(ui_lang: str, taken: set[str]) -> str:
     return f"项目{ts}" if ui_lang == "中文" else f"Project {ts}"
 
 
-def delete_library_records(record_ids: List[str]) -> None:
-    core_storage.delete_library_records(CALC_LIBRARY_DIR, record_ids)
+def delete_library_records(record_ids: List[str], role: str, username: str) -> None:
+    core_storage.delete_library_records(
+        CALC_LIBRARY_DIR, record_ids, role=role, username=username
+    )
 
 
 def library_record_label(rec: Dict[str, Any], ui_lang: str) -> str:

@@ -16,6 +16,9 @@ scripts/portable/get-pip.py
 .cursor/
 .vscode/
 
+# 运行时用户账号（含密码哈希）
+数据/users.json
+
 # PyInstaller
 build/
 dist/
