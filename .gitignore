@@ -26,6 +26,9 @@ dist/
 # 一键便携包构建输出（内含 embeddable + .venv，体积大）
 dist_portable/
 
+# 本地生成的服务器上传包（可重新生成）
+deploy_upload/
+
 # Historical milestone zips (keep on disk; not duplicated in Git)
 archives/
 

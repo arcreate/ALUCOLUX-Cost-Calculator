@@ -25,6 +25,8 @@ class TestAuthModule(unittest.TestCase):
         self.assertFalse(core_auth.can(core_auth.ROLE_ADVANCED, "vars_edit"))
         self.assertTrue(core_auth.can(core_auth.ROLE_BASIC, "quote_summary"))
         self.assertFalse(core_auth.can(core_auth.ROLE_BASIC, "report_full"))
+        self.assertFalse(core_auth.can(core_auth.ROLE_ADVANCED, "color_delete"))
+        self.assertTrue(core_auth.can(core_auth.ROLE_ADMIN, "color_delete"))
 
     def test_library_visibility_and_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -53,13 +55,25 @@ class TestAuthModule(unittest.TestCase):
             )
             self.assertEqual(len(core_storage.load_all_library_records(lib_dir)), 1)
 
+    def test_set_user_role(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            users_path = Path(tmp) / "users.json"
+            core_auth.add_user(users_path, "admin", "pwd", core_auth.ROLE_ADMIN)
+            core_auth.add_user(users_path, "bob", "pwd", core_auth.ROLE_BASIC)
+            core_auth.set_user_role(users_path, "bob", core_auth.ROLE_ADVANCED)
+            self.assertEqual(core_auth.get_user_role(users_path, "bob"), core_auth.ROLE_ADVANCED)
+            with self.assertRaises(core_auth.AuthError):
+                core_auth.set_user_role(users_path, "admin", core_auth.ROLE_BASIC)
+
 
 class TestQuoteSummary(unittest.TestCase):
     def test_build_quote_summary_contains_three_prices(self) -> None:
         result = {
             "total_direct_cost": 100000.0,
             "break_even_per_m2": 100.0,
-            "usd_price": 14.5985,
+            "selling_total": 142857.14,
+            "selling_price_per_m2": 142.85714,
+            "usd_price": 20.8551,
         }
         text = build_quote_summary(result, "中文", lambda v: f"{v:,.2f}")
         self.assertIn("总价", text)

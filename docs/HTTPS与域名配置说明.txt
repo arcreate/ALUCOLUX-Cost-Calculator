@@ -1,0 +1,61 @@
+ALUCOLUX® 成本计算器 — HTTPS 与域名配置说明
+==========================================
+
+当前域名
+--------
+- 主域名（已备案）：alucolux.shenliwen.cc
+- 计划接入：sspc.alucolux.com.cn（由公司 IT 做 DNS 指向）
+
+服务器
+------
+- ECS 公网 IP：47.102.222.183
+- 应用目录：/opt/alucolux
+- Streamlit：127.0.0.1:8501（systemd: alucolux）
+- 反向代理：Nginx 80 / 443
+
+一、阿里云安全组（必做）
+----------------------
+入方向放行：
+  - TCP 80
+  - TCP 443
+
+二、首次配置 HTTPS（维护者在 ECS 上执行）
+----------------------------------------
+1. 上传脚本（或 git pull / upload_changed.ps1 已含 scripts/）
+2. SSH 登录服务器后：
+
+   export CERTBOT_EMAIL="你的邮箱@公司.com"
+   bash /opt/alucolux/scripts/server_setup_https.sh
+
+3. 浏览器访问：https://alucolux.shenliwen.cc
+
+说明：
+- 证书为 Let's Encrypt 免费证书，certbot 会自动配置 Nginx 并设置 HTTP→HTTPS 跳转
+- 证书约 90 天有效，certbot.timer 会自动续期
+
+三、IT 接入 sspc.alucolux.com.cn 后
+-----------------------------------
+1. DNS：sspc.alucolux.com.cn → A 记录 → 47.102.222.183
+2. 若该域名需单独备案/接入，按公司流程在阿里云完成
+3. DNS 生效后，在服务器执行：
+
+   export CERTBOT_EMAIL="你的邮箱@公司.com"
+   bash /opt/alucolux/scripts/server_add_https_domain.sh
+
+4. 验证：https://sspc.alucolux.com.cn
+
+四、给 IT 的一句话
+------------------
+> 请将 sspc.alucolux.com.cn 的 A 记录指向 47.102.222.183（与 alucolux.shenliwen.cc 相同）。
+> 解析生效后通知我方，在服务器上追加 SSL 证书即可，无需改应用代码。
+
+五、保留 IP 访问（可选）
+-----------------------
+默认配置保留 http://47.102.222.183 直连（HTTP，不走 HTTPS），便于内网测试。
+正式对外请推广 https://alucolux.shenliwen.cc 或公司域名。
+
+六、故障排查
+------------
+- 502：systemctl status alucolux
+- 证书失败：确认域名已解析到本机、80 端口可从公网访问
+- 仅 HTTP 可用：检查安全组 443、certbot certificates

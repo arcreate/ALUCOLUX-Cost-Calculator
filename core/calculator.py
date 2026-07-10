@@ -17,6 +17,11 @@ def _validate_order_inputs(order: Dict[str, Any]) -> None:
     if int(order.get("trial_times", 0)) < 0:
         raise ValueError("invalid_trial_times")
 
+    for field in ("profit_margin_on_price", "profit_margin_on_price_2"):
+        margin = float(order.get(field, 0.0))
+        if margin < 0 or margin >= 1:
+            raise ValueError("invalid_profit_margin_on_price")
+
 
 def coating_traits(coating_type: str) -> Dict[str, Any]:
     """
@@ -192,7 +197,13 @@ def _calc_other_cost_step(
     }
 
 
-def _calc_summary_step(contract_area: float, vars_map: Dict[str, float], result: Dict[str, Any]) -> Dict[str, Any]:
+def _calc_summary_step(
+    contract_area: float,
+    vars_map: Dict[str, float],
+    result: Dict[str, Any],
+    profit_margin_on_price: float,
+    profit_margin_on_price_2: float,
+) -> Dict[str, Any]:
     total_direct_cost = (
         result["al_cost"]
         + result["pretreatment_cost"]
@@ -206,10 +217,21 @@ def _calc_summary_step(contract_area: float, vars_map: Dict[str, float], result:
         + result["embossing_cost"]
     )
     break_even_per_m2 = total_direct_cost / contract_area
-    usd_price = break_even_per_m2 / vars_map["EXCHANGE_RATE"]
+    # Margin1：工厂→销售公司；Margin2：销售公司→外部客户。每层均为「利润占该层售价比例」。
+    internal_selling_price_per_m2 = break_even_per_m2 / (1.0 - profit_margin_on_price)
+    selling_price_per_m2 = internal_selling_price_per_m2 / (1.0 - profit_margin_on_price_2)
+    selling_total = selling_price_per_m2 * contract_area
+    profit_amount = selling_total - total_direct_cost
+    usd_price = selling_price_per_m2 / vars_map["EXCHANGE_RATE"]
     return {
         "total_direct_cost": total_direct_cost,
         "break_even_per_m2": break_even_per_m2,
+        "profit_margin_on_price": profit_margin_on_price,
+        "profit_margin_on_price_2": profit_margin_on_price_2,
+        "internal_selling_price_per_m2": internal_selling_price_per_m2,
+        "selling_price_per_m2": selling_price_per_m2,
+        "selling_total": selling_total,
+        "profit_amount": profit_amount,
         "usd_price": usd_price,
     }
 
@@ -251,6 +273,8 @@ def calc_cost(order: Dict[str, Any], vars_map: Dict[str, float]) -> Dict[str, An
     use_size_rounding_waste = order["use_size_rounding_waste"]
     embossing_passes = int(order.get("embossing_passes", 0))
     batch_orders = max(1, int(order.get("batch_orders", 1)))
+    profit_margin_on_price = float(order.get("profit_margin_on_price", 0.0))
+    profit_margin_on_price_2 = float(order.get("profit_margin_on_price_2", 0.0))
 
     # 步骤1：面积与卷数（含压花损耗的逐道投产放大）
     result: Dict[str, Any] = _calc_area_step(
@@ -296,5 +320,13 @@ def calc_cost(order: Dict[str, Any], vars_map: Dict[str, float]) -> Dict[str, An
     )
     result["batch_orders"] = batch_orders
     # 步骤5：汇总
-    result.update(_calc_summary_step(contract_area=contract_area, vars_map=vars_map, result=result))
+    result.update(
+        _calc_summary_step(
+            contract_area=contract_area,
+            vars_map=vars_map,
+            result=result,
+            profit_margin_on_price=profit_margin_on_price,
+            profit_margin_on_price_2=profit_margin_on_price_2,
+        )
+    )
     return result

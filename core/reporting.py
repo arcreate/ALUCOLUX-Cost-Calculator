@@ -124,6 +124,14 @@ def build_optimizer_payload(
             "embossing_cost": float(result["embossing_cost"]),
             "total_direct_cost": float(result["total_direct_cost"]),
             "break_even_per_m2": float(result["break_even_per_m2"]),
+            "profit_margin_on_price": float(result.get("profit_margin_on_price", 0.0)),
+            "profit_margin_on_price_2": float(result.get("profit_margin_on_price_2", 0.0)),
+            "internal_selling_price_per_m2": float(
+                result.get("internal_selling_price_per_m2", result["break_even_per_m2"])
+            ),
+            "selling_price_per_m2": float(result.get("selling_price_per_m2", result["break_even_per_m2"])),
+            "selling_total": float(result.get("selling_total", result["total_direct_cost"])),
+            "profit_amount": float(result.get("profit_amount", 0.0)),
             "usd_price": float(result.get("usd_price", 0.0)),
             "al_coil_processing_fee_per_kg": float(result.get("al_coil_processing_fee_per_kg", 0.0)),
             "al_coil_processing_fee_base_kg": float(result.get("al_coil_processing_fee_base_kg", result.get("al_coil_processing_fee_per_kg", 0.0))),
@@ -249,6 +257,14 @@ def build_report(
     lines.append(f"- {'Coating type' if ui_lang == 'English' else '涂层类型'}: {coating_code_to_label[order['coating_type']][ui_lang]}")
     lines.append(f"- {'Embossing passes' if ui_lang == 'English' else '压花道数'}: {int(order.get('embossing_passes', 0))}")
     lines.append(f"- {'Order batches' if ui_lang == 'English' else '分批下单'}: {int(order.get('batch_orders', 1))}")
+    _margin1 = float(order.get("profit_margin_on_price", 0.0))
+    _margin2 = float(order.get("profit_margin_on_price_2", 0.0))
+    if ui_lang == "English":
+        lines.append(f"- Margin1 (factory → sales company): {_margin1:.2%}")
+        lines.append(f"- Margin2 (sales company → customer): {_margin2:.2%}")
+    else:
+        lines.append(f"- Margin1（工厂→销售公司）: {_margin1:.2%}")
+        lines.append(f"- Margin2（销售公司→客户）: {_margin2:.2%}")
     lines.append(f"- {'Trial runs' if ui_lang == 'English' else '试机次数'}: {order['trial_times']}")
     lines.append(f"- {'Rounding waste model' if ui_lang == 'English' else '长度整除浪费模型'}: {'On' if order['use_size_rounding_waste'] else 'Off' if ui_lang == 'English' else '开启' if order['use_size_rounding_waste'] else '关闭'}")
     if ui_lang == "English":
@@ -549,6 +565,32 @@ def build_report(
     lines.append(
         f"- {'Break-even unit price' if ui_lang == 'English' else '单位保本价'}: {fmt_money_fn(result['break_even_per_m2'])} {'CNY/m²' if ui_lang == 'English' else '元/㎡'}"
     )
+    _margin1_r = float(result.get("profit_margin_on_price", 0.0))
+    _margin2_r = float(result.get("profit_margin_on_price_2", 0.0))
+    _internal_m2 = float(result.get("internal_selling_price_per_m2", result["break_even_per_m2"]))
+    _final_m2 = float(result.get("selling_price_per_m2", result["break_even_per_m2"]))
+    if ui_lang == "English":
+        lines.append(f"- Margin1 (factory → sales company): {_margin1_r:.2%}")
+        lines.append(
+            f"- Internal unit price = break-even / (1 - Margin1) = {fmt_money_fn(result['break_even_per_m2'])} / (1 - {_margin1_r}) = {fmt_money_fn(_internal_m2)} CNY/m²"
+        )
+        lines.append(f"- Margin2 (sales company → customer): {_margin2_r:.2%}")
+        lines.append(
+            f"- Final selling unit price = internal / (1 - Margin2) = {fmt_money_fn(_internal_m2)} / (1 - {_margin2_r}) = {fmt_money_fn(_final_m2)} CNY/m²"
+        )
+        lines.append(f"- Selling total price: {fmt_money_fn(result.get('selling_total', result['total_direct_cost']))} CNY")
+        lines.append(f"- Total profit (vs direct cost): {fmt_money_fn(result.get('profit_amount', 0.0))} CNY")
+    else:
+        lines.append(f"- Margin1（工厂→销售公司）: {_margin1_r:.2%}")
+        lines.append(
+            f"- 内部销售单价 = 单位保本价 / (1 - Margin1) = {fmt_money_fn(result['break_even_per_m2'])} / (1 - {_margin1_r}) = {fmt_money_fn(_internal_m2)} 元/㎡"
+        )
+        lines.append(f"- Margin2（销售公司→客户）: {_margin2_r:.2%}")
+        lines.append(
+            f"- 最终销售单价 = 内部单价 / (1 - Margin2) = {fmt_money_fn(_internal_m2)} / (1 - {_margin2_r}) = {fmt_money_fn(_final_m2)} 元/㎡"
+        )
+        lines.append(f"- 销售总价: {fmt_money_fn(result.get('selling_total', result['total_direct_cost']))} 元")
+        lines.append(f"- 总利润额（相对直接成本）: {fmt_money_fn(result.get('profit_amount', 0.0))} 元")
     lines.append(f"- {'USD unit price' if ui_lang == 'English' else 'USD单价'}: {result['usd_price']:.4f} USD/㎡")
     return "\n".join(lines)
 
@@ -557,8 +599,8 @@ def build_quote_summary(result: Dict[str, Any], ui_lang: str, fmt_money_fn) -> s
     """
     普通用户报价摘要：仅总价、平米单价（元/㎡）、美元单价（USD/㎡），不含运算过程与分项成本。
     """
-    total = fmt_money_fn(result["total_direct_cost"])
-    per_m2 = fmt_money_fn(result["break_even_per_m2"])
+    total = fmt_money_fn(result.get("selling_total", result["total_direct_cost"]))
+    per_m2 = fmt_money_fn(result.get("selling_price_per_m2", result["break_even_per_m2"]))
     usd = f"{float(result['usd_price']):.4f}"
     if ui_lang == "English":
         return (

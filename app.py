@@ -17,6 +17,7 @@ from core import reporting as core_reporting
 from core import storage as core_storage
 from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH, USERS_PATH
 from core import auth as core_auth
+from core import interactive_report as core_interactive_report
 
 
 FACTORY_DEFAULT_VARS: Dict[str, float] = {
@@ -107,6 +108,20 @@ UI_TEXT = {
     "coating": {"中文": "涂层类型", "English": "Coating Type"},
     "embossing_passes": {"中文": "压花道数", "English": "Embossing passes"},
     "batch_orders": {"中文": "分批下单", "English": "Order batches"},
+    "profit_margin_on_price": {"中文": "Margin1（内部销售）", "English": "Margin1 (internal sale)"},
+    "profit_margin_on_price_2": {"中文": "Margin2（外部销售）", "English": "Margin2 (external sale)"},
+    "profit_margin_help": {
+        "中文": "工厂卖给销售公司的利润率（利润占该层售价比例）。内部单价 = 单位保本价 ÷ (1 − Margin1)。默认 5%（0.05）。",
+        "English": "Factory-to-sales-company margin (profit share of that layer's selling price). Internal unit price = break-even ÷ (1 − Margin1). Default 5% (0.05).",
+    },
+    "profit_margin_help_2": {
+        "中文": "销售公司卖给外部客户的利润率（利润占该层售价比例）。最终销售单价 = 内部单价 ÷ (1 − Margin2)。默认 40%（0.40）。",
+        "English": "Sales-company-to-customer margin (profit share of that layer's selling price). Final unit price = internal unit price ÷ (1 − Margin2). Default 40% (0.40).",
+    },
+    "invalid_profit_margin": {
+        "中文": "Margin1 与 Margin2 均须在 0 到 1 之间（不含 1），例如 0.40 表示 40%。",
+        "English": "Margin1 and Margin2 must each be between 0 and 1 (exclusive of 1), e.g. 0.40 for 40%.",
+    },
     "trial_auto": {"中文": "试机次数使用默认值", "English": "Use default trial runs"},
     "trial_times": {"中文": "试机次数", "English": "Trial runs"},
     "rounding_waste": {"中文": "启用长度整除浪费模型（按单板长宽向上取整块数）", "English": "Enable sheet rounding waste model (ceil by sheet size)"},
@@ -235,12 +250,30 @@ UI_TEXT = {
     "user_added": {"中文": "用户已创建", "English": "User created"},
     "user_pwd_reset": {"中文": "密码已重置", "English": "Password reset"},
     "user_exists": {"中文": "用户名已存在", "English": "Username already exists"},
+    "user_delete": {"中文": "删除用户", "English": "Delete user"},
+    "user_deleted": {"中文": "用户已删除", "English": "User deleted"},
+    "user_delete_self": {"中文": "不能删除当前登录账号", "English": "Cannot delete your own account"},
+    "user_delete_last_admin": {"中文": "不能删除最后一个管理员", "English": "Cannot delete the last administrator"},
+    "user_change_role": {"中文": "更改用户角色", "English": "Change user role"},
+    "user_role_changed": {"中文": "用户角色已更新", "English": "User role updated"},
+    "user_role_unchanged": {"中文": "角色未变更", "English": "Role unchanged"},
     "permission_denied": {"中文": "无权限执行此操作", "English": "Permission denied"},
     "color_no_delete": {
         "中文": "高级用户不可删除颜色记录；请保留所有原有颜色代码。",
         "English": "Advanced users cannot delete color records; keep all existing color codes.",
     },
     "quote_summary_title": {"中文": "报价结果", "English": "Quote result"},
+    "report_tab_static": {"中文": "静态报告", "English": "Static report"},
+    "report_tab_interactive": {"中文": "交互推演", "English": "Interactive sandbox"},
+    "sandbox_reset": {"中文": "恢复本次计算初始值", "English": "Reset to initial calculation"},
+    "sandbox_reset_ok": {"中文": "已恢复为进入推演时的参数", "English": "Restored to parameters when sandbox opened"},
+    "sandbox_apply": {"中文": "应用", "English": "Apply"},
+    "sandbox_invalid": {"中文": "参数无效，无法重算", "English": "Invalid parameters; cannot recalculate"},
+    "sandbox_hint": {
+        "中文": "点击蓝色 ◆ 变量 ◆ 可临时修改并重算；不会写入默认参数或计算库。",
+        "English": "Click a blue ◆ variable ◆ to edit temporarily and recalculate. Changes are not saved to defaults or the library.",
+    },
+    "sandbox_export_title": {"中文": "导出当前试算报告", "English": "Export current sandbox report"},
 }
 
 COLOR_DB_COLUMNS = ["color_code", "coating_type", "embossing_passes", "face_paint_price", "clear_paint_price", "updated_at"]
@@ -407,6 +440,54 @@ def normalize_color_record(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def apply_color_table_edits(
+    full_db: List[Dict[str, Any]],
+    base_rows: List[Dict[str, Any]],
+    edited_rows: List[Dict[str, Any]],
+    *,
+    partial_view: bool,
+    allow_delete: bool,
+) -> List[Dict[str, Any]]:
+    """
+    将 data_editor 的修改写回颜色库。
+    partial_view=True 时（筛选后仅显示部分行）只更新可见行，不触动未显示的记录。
+    """
+    normalized: List[Dict[str, Any]] = []
+    for row in edited_rows:
+        rec = normalize_color_record(row)
+        if rec["color_code"]:
+            rec["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            normalized.append(rec)
+
+    if not normalized and not partial_view and allow_delete:
+        return []
+
+    if not partial_view:
+        if not allow_delete:
+            old_codes = {r["color_code"].strip().upper() for r in full_db if r.get("color_code")}
+            new_codes = {r["color_code"].strip().upper() for r in normalized}
+            if not old_codes.issubset(new_codes):
+                raise ValueError("color_no_delete")
+        return sorted(normalized, key=lambda r: r["color_code"])
+
+    base_codes = {r["color_code"].strip().upper() for r in base_rows if r.get("color_code")}
+    edited_map = {r["color_code"].strip().upper(): r for r in normalized}
+    merged: List[Dict[str, Any]] = []
+    for row in full_db:
+        code = row["color_code"].strip().upper()
+        if code not in base_codes:
+            merged.append(row)
+            continue
+        if code in edited_map:
+            merged.append(edited_map[code])
+        elif not allow_delete:
+            merged.append(row)
+    for code, row in edited_map.items():
+        if code not in {r["color_code"].strip().upper() for r in merged}:
+            merged.append(row)
+    return sorted(merged, key=lambda r: r["color_code"])
+
+
 VAR_META: Dict[str, Dict[str, str]] = {
     "AL_DENSITY": {"zh": "铝密度", "en": "Aluminum density", "unit": "kg/(㎡·mm)"},
     "BAD_RATE": {"zh": "不良品率", "en": "Defect rate", "unit": "-"},
@@ -452,6 +533,197 @@ VAR_META: Dict[str, Dict[str, str]] = {
     "EMBOSSING_PRICE": {"zh": "压花单价", "en": "Embossing price", "unit": "元/㎡/道"},
     "EMBOSSING_LOSS_PER_PASS": {"zh": "压花损耗率(每道)", "en": "Embossing loss rate (per pass)", "unit": "比例 0-1"},
 }
+
+
+ORDER_FIELD_LABELS: Dict[str, Dict[str, str]] = {
+    "contract_area": {"中文": "合同面积", "English": "Contract area"},
+    "width_m": {"中文": "单板宽度", "English": "Sheet width"},
+    "length_m": {"中文": "单板长度", "English": "Sheet length"},
+    "thickness_mm": {"中文": "板厚", "English": "Thickness"},
+    "batch_orders": {"中文": "分批下单", "English": "Order batches"},
+    "trial_times": {"中文": "试机次数", "English": "Trial runs"},
+    "embossing_passes": {"中文": "压花道数", "English": "Embossing passes"},
+    "profit_margin_on_price": {"中文": "Margin1", "English": "Margin1"},
+    "profit_margin_on_price_2": {"中文": "Margin2", "English": "Margin2"},
+    "use_size_rounding_waste": {"中文": "整除浪费模型", "English": "Rounding waste model"},
+}
+
+
+def _order_field_label(key: str, ui_lang: str) -> str:
+    meta = ORDER_FIELD_LABELS.get(key)
+    if not meta:
+        return key
+    return meta["中文"] if ui_lang == "中文" else meta["English"]
+
+
+def _var_part_label(part: Dict[str, Any], ui_lang: str) -> str:
+    if part.get("label"):
+        return str(part["label"])
+    if part["scope"] == "order":
+        return _order_field_label(part["key"], ui_lang)
+    return format_var_label(part["key"], ui_lang)
+
+
+def _init_sandbox_from_calc(order: Dict[str, Any], vars_map: Dict[str, float]) -> None:
+    sb_order, sb_vars = core_interactive_report.copy_calc_state(order, vars_map)
+    st.session_state.sandbox_order = sb_order
+    st.session_state.sandbox_vars = sb_vars
+    base_order, base_vars = core_interactive_report.copy_calc_state(order, vars_map)
+    st.session_state.sandbox_baseline_order = base_order
+    st.session_state.sandbox_baseline_vars = base_vars
+    try:
+        st.session_state.sandbox_result = core_interactive_report.recalc_sandbox(sb_order, sb_vars)
+    except ValueError:
+        st.session_state.sandbox_result = None
+
+
+def _reset_sandbox_to_baseline() -> None:
+    st.session_state.sandbox_order, st.session_state.sandbox_vars = core_interactive_report.copy_calc_state(
+        st.session_state.sandbox_baseline_order,
+        st.session_state.sandbox_baseline_vars,
+    )
+    try:
+        st.session_state.sandbox_result = core_interactive_report.recalc_sandbox(
+            st.session_state.sandbox_order,
+            st.session_state.sandbox_vars,
+        )
+    except ValueError:
+        st.session_state.sandbox_result = None
+
+
+def _sandbox_var_chip(part: Dict[str, Any], order: Dict[str, Any], vars_map: Dict[str, float], ui_lang: str) -> str:
+    label = _var_part_label(part, ui_lang)
+    display = core_interactive_report.format_var_display(
+        part["scope"], part["key"], order, vars_map, ui_lang, format_var_label
+    )
+    return f"◆ {label} = {display} ◆"
+
+
+def _render_sandbox_var_editor(
+    part: Dict[str, Any],
+    order: Dict[str, Any],
+    vars_map: Dict[str, float],
+    ui_lang: str,
+    editor_uid: str,
+) -> None:
+    scope, key = part["scope"], part["key"]
+    cur = core_interactive_report.get_value(scope, key, order, vars_map)
+    new_val: Any = cur
+    if scope == "order" and key == "use_size_rounding_waste":
+        new_val = st.checkbox(
+            _order_field_label(key, ui_lang),
+            value=bool(cur),
+            key=f"sbx_chk_{editor_uid}",
+        )
+    elif scope == "order" and key in ("batch_orders", "trial_times", "embossing_passes"):
+        min_v = 0 if key != "batch_orders" else 1
+        new_val = st.number_input(
+            _var_part_label(part, ui_lang),
+            min_value=min_v,
+            value=int(cur),
+            step=1,
+            key=f"sbx_num_{editor_uid}",
+        )
+    elif scope == "order" and key in ("profit_margin_on_price", "profit_margin_on_price_2"):
+        new_val = st.number_input(
+            _var_part_label(part, ui_lang),
+            min_value=0.0,
+            max_value=0.99,
+            value=float(cur),
+            step=0.01,
+            format="%.2f",
+            key=f"sbx_num_{editor_uid}",
+        )
+    else:
+        new_val = st.number_input(
+            _var_part_label(part, ui_lang),
+            value=float(cur),
+            format="%.4f",
+            key=f"sbx_num_{editor_uid}",
+        )
+    if st.button(t("sandbox_apply", ui_lang), key=f"sbx_apply_{editor_uid}"):
+        try:
+            core_interactive_report.set_value(scope, key, new_val, order, vars_map)
+            st.session_state.sandbox_result = core_interactive_report.recalc_sandbox(order, vars_map)
+            st.rerun()
+        except ValueError:
+            st.error(t("sandbox_invalid", ui_lang))
+
+
+def _render_interactive_sandbox(ui_lang: str) -> None:
+    order = st.session_state.get("sandbox_order")
+    vars_map = st.session_state.get("sandbox_vars")
+    result = st.session_state.get("sandbox_result")
+    if not order or not vars_map or not result:
+        st.info(t("sandbox_hint", ui_lang))
+        return
+
+    st.caption(t("sandbox_hint", ui_lang))
+    if st.button(t("sandbox_reset", ui_lang), key="btn_sandbox_reset"):
+        _reset_sandbox_to_baseline()
+        st.success(t("sandbox_reset_ok", ui_lang))
+        st.rerun()
+
+    st.markdown(
+        """
+<style>
+div[data-testid="stHorizontalBlock"] div[data-testid="stPopover"] > button {
+    color: #1565c0 !important;
+    font-weight: 600;
+    border: 1px solid #90caf9;
+    background: #e3f2fd;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    sections = core_interactive_report.build_interactive_sections(
+        order,
+        vars_map,
+        result,
+        ui_lang,
+        COATING_CODE_TO_LABEL,
+        fmt_money,
+        format_var_label,
+    )
+    line_counter = 0
+    for sec in sections:
+        st.markdown(f"**{sec['title']}**")
+        for line in sec["lines"]:
+            parts = line["parts"]
+            if not any(p["type"] == "var" for p in parts):
+                text = "".join(p["content"] for p in parts if p["type"] == "text")
+                st.markdown(text)
+                line_counter += 1
+                continue
+            with st.container(horizontal=True):
+                for pi, part in enumerate(parts):
+                    if part["type"] == "text":
+                        st.markdown(part["content"])
+                    else:
+                        uid = f"{line_counter}_{pi}_{part['scope']}_{part['key']}"
+                        chip = _sandbox_var_chip(part, order, vars_map, ui_lang)
+                        with st.popover(chip):
+                            _render_sandbox_var_editor(part, order, vars_map, ui_lang, uid)
+            line_counter += 1
+        st.markdown("")
+
+    if _user_can("report_export"):
+        st.markdown(f"#### {t('sandbox_export_title', ui_lang)}")
+        sb_report = build_report(order, vars_map, result, ui_lang)
+        sb_payload = build_optimizer_payload(order, vars_map, result)
+        sb_export = attach_optimizer_payload(sb_report, sb_payload)
+        fmt = st.selectbox(t("export_format", ui_lang), ["TXT", "Markdown", "RTF"], index=0, key="sandbox_export_fmt")
+        if fmt == "RTF":
+            data = to_rtf(sb_export)
+            filename = "alucolux_sandbox_report.rtf"
+            mime = "application/rtf"
+        else:
+            data = sb_export
+            filename = "alucolux_sandbox_report.txt" if fmt == "TXT" else "alucolux_sandbox_report.md"
+            mime = "text/plain" if fmt == "TXT" else "text/markdown"
+        st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime, key="btn_sandbox_download")
 
 
 def format_var_label(var_key: str, ui_lang: str) -> str:
@@ -754,6 +1026,59 @@ def _render_user_management(ui_lang: str) -> None:
                 st.success(t("user_pwd_reset", ui_lang))
             except core_auth.AuthError as exc:
                 st.error(f"{t('permission_denied', ui_lang)}: {exc}")
+        st.markdown(f"**{t('user_change_role', ui_lang)}**")
+        if users:
+            role_user = st.selectbox(
+                t("login_user", ui_lang),
+                options=[u["username"] for u in users],
+                key="admin_role_change_user_select",
+            )
+            role_by_user = {u["username"]: u["role"] for u in users}
+            current_role = role_by_user[role_user]
+            role_options = [core_auth.ROLE_ADMIN, core_auth.ROLE_ADVANCED, core_auth.ROLE_BASIC]
+            new_role_for_user = st.selectbox(
+                t("role_label", ui_lang),
+                role_options,
+                index=role_options.index(current_role),
+                format_func=lambda r: _role_display_for(r, ui_lang),
+                key=f"admin_role_change_value_{role_user}",
+            )
+            if st.button(t("user_change_role", ui_lang), key="btn_admin_change_role"):
+                try:
+                    if new_role_for_user == current_role:
+                        st.info(t("user_role_unchanged", ui_lang))
+                    else:
+                        core_auth.set_user_role(USERS_PATH, role_user, new_role_for_user)
+                        st.success(t("user_role_changed", ui_lang))
+                        if role_user == _auth_username():
+                            st.session_state.auth_role = new_role_for_user
+                        st.rerun()
+                except core_auth.AuthError as exc:
+                    code = str(exc)
+                    if code == "last_admin":
+                        st.error(t("user_delete_last_admin", ui_lang))
+                    else:
+                        st.error(f"{t('permission_denied', ui_lang)}: {exc}")
+        st.markdown(f"**{t('user_delete', ui_lang)}**")
+        if users:
+            del_user = st.selectbox(
+                t("login_user", ui_lang),
+                options=[u["username"] for u in users],
+                key="admin_delete_user_select",
+            )
+            if st.button(t("user_delete", ui_lang), key="btn_admin_delete_user"):
+                try:
+                    core_auth.delete_user(USERS_PATH, del_user, acting_username=_auth_username())
+                    st.success(t("user_deleted", ui_lang))
+                    st.rerun()
+                except core_auth.AuthError as exc:
+                    code = str(exc)
+                    if code == "cannot_delete_self":
+                        st.error(t("user_delete_self", ui_lang))
+                    elif code == "last_admin":
+                        st.error(t("user_delete_last_admin", ui_lang))
+                    else:
+                        st.error(f"{t('permission_denied', ui_lang)}: {exc}")
 
 
 def _role_display_for(role: str, ui_lang: str) -> str:
@@ -800,6 +1125,16 @@ def main() -> None:
         st.session_state.calc_lib_opt_ids = None
     if "last_calc_result" not in st.session_state:
         st.session_state.last_calc_result = None
+    if "sandbox_order" not in st.session_state:
+        st.session_state.sandbox_order = None
+    if "sandbox_vars" not in st.session_state:
+        st.session_state.sandbox_vars = None
+    if "sandbox_result" not in st.session_state:
+        st.session_state.sandbox_result = None
+    if "sandbox_baseline_order" not in st.session_state:
+        st.session_state.sandbox_baseline_order = None
+    if "sandbox_baseline_vars" not in st.session_state:
+        st.session_state.sandbox_baseline_vars = None
     if "color_db" not in st.session_state:
         st.session_state.color_db = load_color_db()
     if "_color_db_rev" not in st.session_state:
@@ -1043,6 +1378,30 @@ def main() -> None:
     with c2:
         length_m = st.number_input(t("length", ui_lang), min_value=0.001, value=3.00, step=0.001, format="%.3f")
         thickness_mm = st.number_input(t("thickness", ui_lang), min_value=0.001, value=3.0, step=0.01, format="%.3f")
+        profit_margin_on_price = float(
+            st.number_input(
+                t("profit_margin_on_price", ui_lang),
+                min_value=0.0,
+                max_value=0.99,
+                value=0.05,
+                step=0.01,
+                format="%.2f",
+                help=t("profit_margin_help", ui_lang),
+                key="order_profit_margin_on_price",
+            )
+        )
+        profit_margin_on_price_2 = float(
+            st.number_input(
+                t("profit_margin_on_price_2", ui_lang),
+                min_value=0.0,
+                max_value=0.99,
+                value=0.40,
+                step=0.01,
+                format="%.2f",
+                help=t("profit_margin_help_2", ui_lang),
+                key="order_profit_margin_on_price_2",
+            )
+        )
     with c3:
         selected_coating_code = color_profile["coating_type"] if color_profile else "PVDF2"
         coating_options = [COATING_CODE_TO_LABEL[v][ui_lang] for v in ["PVDF2", "PVDF3", "PRINT1", "PRINT2"]]
@@ -1222,35 +1581,37 @@ def main() -> None:
                 key=f"color_db_editor_v{_cdb_rev}",
             )
             if st.button(t("color_save_table", ui_lang), key="save_color_table_btn"):
-                normalized_rows = []
-                for row in edited_rows:
-                    normalized = normalize_color_record(row)
-                    if normalized["color_code"]:
-                        normalized["updated_at"] = datetime.now().isoformat(timespec="seconds")
-                        normalized_rows.append(normalized)
-                if not normalized_rows:
-                    st.warning(t("color_table_empty_warn", ui_lang))
-                elif role == core_auth.ROLE_ADVANCED:
-                    old_codes = {r["color_code"].strip().upper() for r in st.session_state.color_db if r.get("color_code")}
-                    new_codes = {r["color_code"].strip().upper() for r in normalized_rows}
-                    if not old_codes.issubset(new_codes):
+                partial_view = bool(filter_text.strip())
+                try:
+                    merged = apply_color_table_edits(
+                        st.session_state.color_db,
+                        base_rows,
+                        edited_rows,
+                        partial_view=partial_view,
+                        allow_delete=_user_can("color_delete"),
+                    )
+                except ValueError as exc:
+                    if str(exc) == "color_no_delete":
                         st.error(t("color_no_delete", ui_lang))
                     else:
-                        st.session_state.color_db = merge_color_rows([], normalized_rows, "latest")
+                        st.error(str(exc))
+                    merged = None
+                if merged is not None:
+                    if not merged:
+                        st.warning(t("color_table_empty_warn", ui_lang))
+                    else:
+                        st.session_state.color_db = merged
                         save_color_db(st.session_state.color_db)
                         _bump_color_db_editor_rev()
                         st.success(t("color_table_saved", ui_lang))
-                else:
-                    st.session_state.color_db = merge_color_rows([], normalized_rows, "latest")
-                    save_color_db(st.session_state.color_db)
-                    _bump_color_db_editor_rev()
-                    st.success(t("color_table_saved", ui_lang))
 
     order = {
         "project_name": str(st.session_state.get("order_project_name", "")).strip(),
         "color_code": str(selected_color).strip() if selected_color else "",
         "contract_area": float(contract_area),
         "batch_orders": int(batch_orders),
+        "profit_margin_on_price": float(profit_margin_on_price),
+        "profit_margin_on_price_2": float(profit_margin_on_price_2),
         "width_m": float(width_m),
         "length_m": float(length_m),
         "thickness_mm": float(thickness_mm),
@@ -1277,8 +1638,20 @@ def main() -> None:
             or thickness_mm <= 0
             or int(batch_orders) < 1
             or int(trial_times) < 0
+            or profit_margin_on_price < 0
+            or profit_margin_on_price >= 1
+            or profit_margin_on_price_2 < 0
+            or profit_margin_on_price_2 >= 1
         ):
-            st.error(t("invalid", ui_lang))
+            if (
+                profit_margin_on_price < 0
+                or profit_margin_on_price >= 1
+                or profit_margin_on_price_2 < 0
+                or profit_margin_on_price_2 >= 1
+            ):
+                st.error(t("invalid_profit_margin", ui_lang))
+            else:
+                st.error(t("invalid", ui_lang))
             _refresh_config_export_cache()
             return
         pn_calc = str(st.session_state.get("order_project_name", "")).strip()
@@ -1301,6 +1674,8 @@ def main() -> None:
             export_report = attach_optimizer_payload(report, opt_payload)
             st.session_state.last_report = report
             st.session_state.last_export_report = export_report
+            if _user_can("interactive_report"):
+                _init_sandbox_from_calc(order, st.session_state.vars_map)
         else:
             st.session_state.last_optimizer_payload = None
             st.session_state.last_report = ""
@@ -1309,32 +1684,43 @@ def main() -> None:
     if st.session_state.last_calc_result is not None:
         st.subheader(t("output", ui_lang))
         if _user_can("report_full") and st.session_state.last_report:
-            st.text(st.session_state.last_report)
+            tab_static, tab_interactive = st.tabs(
+                [t("report_tab_static", ui_lang), t("report_tab_interactive", ui_lang)]
+            )
+            with tab_static:
+                st.text(st.session_state.last_report)
 
-            if st.session_state.last_optimizer_payload is not None and _user_can("calc_library_save"):
-                if st.button(t("calc_library_save", ui_lang), key="btn_save_to_calc_library"):
-                    save_calculation_to_library(st.session_state.last_optimizer_payload, username)
-                    st.success(t("calc_library_saved", ui_lang))
-                    st.session_state["_pending_order_project_name"] = suggest_default_project_name(
-                        ui_lang, collect_library_project_names(role, username)
-                    )
-                    st.rerun()
+                if st.session_state.last_optimizer_payload is not None and _user_can("calc_library_save"):
+                    if st.button(t("calc_library_save", ui_lang), key="btn_save_to_calc_library"):
+                        save_calculation_to_library(st.session_state.last_optimizer_payload, username)
+                        st.success(t("calc_library_saved", ui_lang))
+                        st.session_state["_pending_order_project_name"] = suggest_default_project_name(
+                            ui_lang, collect_library_project_names(role, username)
+                        )
+                        st.rerun()
 
-            if _user_can("report_export"):
-                fmt = st.selectbox(t("export_format", ui_lang), ["TXT", "Markdown", "RTF"], index=0)
-                if fmt == "TXT":
-                    data = st.session_state.last_export_report or st.session_state.last_report
-                    filename = "alucolux_report.txt"
-                    mime = "text/plain"
-                elif fmt == "Markdown":
-                    data = st.session_state.last_export_report or st.session_state.last_report
-                    filename = "alucolux_report.md"
-                    mime = "text/markdown"
-                else:
-                    data = to_rtf(st.session_state.last_export_report or st.session_state.last_report)
-                    filename = "alucolux_report.rtf"
-                    mime = "application/rtf"
-                st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime)
+                if _user_can("report_export"):
+                    fmt = st.selectbox(t("export_format", ui_lang), ["TXT", "Markdown", "RTF"], index=0, key="static_export_fmt")
+                    if fmt == "TXT":
+                        data = st.session_state.last_export_report or st.session_state.last_report
+                        filename = "alucolux_report.txt"
+                        mime = "text/plain"
+                    elif fmt == "Markdown":
+                        data = st.session_state.last_export_report or st.session_state.last_report
+                        filename = "alucolux_report.md"
+                        mime = "text/markdown"
+                    else:
+                        data = to_rtf(st.session_state.last_export_report or st.session_state.last_report)
+                        filename = "alucolux_report.rtf"
+                        mime = "application/rtf"
+                    st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime, key="btn_static_download")
+
+            if _user_can("interactive_report"):
+                with tab_interactive:
+                    _render_interactive_sandbox(ui_lang)
+            else:
+                with tab_interactive:
+                    st.caption(t("permission_denied", ui_lang))
         elif _user_can("quote_summary"):
             st.markdown(f"### {t('quote_summary_title', ui_lang)}")
             st.markdown(

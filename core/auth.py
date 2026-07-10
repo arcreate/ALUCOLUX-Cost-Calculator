@@ -32,6 +32,7 @@ PERMISSIONS: Dict[str, Set[str]] = {
     "restore_default": {ROLE_ADMIN, ROLE_ADVANCED, ROLE_BASIC},
     "report_full": {ROLE_ADMIN, ROLE_ADVANCED},
     "report_export": {ROLE_ADMIN, ROLE_ADVANCED},
+    "interactive_report": {ROLE_ADMIN, ROLE_ADVANCED},
     "quote_summary": {ROLE_ADMIN, ROLE_ADVANCED, ROLE_BASIC},
     "color_csv_import": {ROLE_ADMIN},
     "color_csv_export": {ROLE_ADMIN},
@@ -198,6 +199,33 @@ def reset_user_password(users_path: Path, username: str, new_password: str) -> N
             break
     if not found:
         raise AuthError("user_not_found")
+    _save_store(users_path, store)
+
+
+def set_user_role(users_path: Path, username: str, new_role: str) -> None:
+    """修改已有用户角色（不可导致系统无管理员）。"""
+    username = username.strip()
+    if new_role not in VALID_ROLES:
+        raise AuthError("invalid_role")
+    store = _load_store(users_path)
+    users = store.get("users", [])
+    target = None
+    for u in users:
+        if str(u.get("username", "")) == username:
+            target = u
+            break
+    if target is None:
+        raise AuthError("user_not_found")
+    old_role = str(target.get("role", ROLE_BASIC))
+    if old_role == new_role:
+        return
+    if old_role == ROLE_ADMIN and new_role != ROLE_ADMIN:
+        other_admins = sum(
+            1 for u in users if str(u.get("role")) == ROLE_ADMIN and str(u.get("username", "")) != username
+        )
+        if other_admins < 1:
+            raise AuthError("last_admin")
+    target["role"] = new_role
     _save_store(users_path, store)
 
 

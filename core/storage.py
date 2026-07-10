@@ -211,8 +211,8 @@ def library_record_label(rec: Dict[str, Any], ui_lang: str) -> str:
     if usd is None:
         vars_map = p.get("vars") or {}
         ex = float(vars_map.get("EXCHANGE_RATE", 6.85) or 6.85)
-        be = float(res.get("break_even_per_m2", 0) or 0)
-        usd = be / ex if ex else 0.0
+        sell = float(res.get("selling_price_per_m2", res.get("break_even_per_m2", 0)) or 0)
+        usd = sell / ex if ex else 0.0
     else:
         usd = float(usd)
     saved = str(rec.get("saved_at", ""))[:19]

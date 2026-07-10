@@ -60,15 +60,60 @@ class TestCalculatorRegression(unittest.TestCase):
         )
         self.assertAlmostEqual(
             result["usd_price"] * vars_map["EXCHANGE_RATE"],
-            result["break_even_per_m2"],
+            result["selling_price_per_m2"],
             places=6,
         )
+        self.assertAlmostEqual(result["selling_price_per_m2"], result["break_even_per_m2"], places=6)
+
+    def test_profit_margin_on_selling_price_single_layer(self) -> None:
+        """仅 Margin1、无 Margin2 时与旧版单层逻辑一致。"""
+        vars_map = load_default_vars()
+        order = build_order(profit_margin_on_price=0.3, profit_margin_on_price_2=0.0)
+        result = calc_cost(order, vars_map)
+        self.assertAlmostEqual(result["profit_margin_on_price"], 0.3)
+        self.assertAlmostEqual(result["profit_margin_on_price_2"], 0.0)
+        expected_sell_m2 = result["break_even_per_m2"] / 0.7
+        self.assertAlmostEqual(result["internal_selling_price_per_m2"], expected_sell_m2, places=4)
+        self.assertAlmostEqual(result["selling_price_per_m2"], expected_sell_m2, places=4)
+        self.assertAlmostEqual(
+            (result["selling_total"] - result["total_direct_cost"]) / result["selling_total"],
+            0.3,
+            places=4,
+        )
+
+    def test_dual_profit_margin_defaults(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(profit_margin_on_price=0.05, profit_margin_on_price_2=0.40)
+        result = calc_cost(order, vars_map)
+        be = result["break_even_per_m2"]
+        internal = be / 0.95
+        final = internal / 0.60
+        self.assertAlmostEqual(result["internal_selling_price_per_m2"], internal, places=4)
+        self.assertAlmostEqual(result["selling_price_per_m2"], final, places=4)
+        self.assertAlmostEqual(result["selling_total"], final * order["contract_area"], places=2)
+        self.assertAlmostEqual(
+            result["profit_amount"],
+            result["selling_total"] - result["total_direct_cost"],
+            places=2,
+        )
+        self.assertAlmostEqual(result["usd_price"], final / vars_map["EXCHANGE_RATE"], places=6)
 
     def test_calc_cost_rejects_invalid_area(self) -> None:
         vars_map = load_default_vars()
         order = build_order(contract_area=0.0)
         with self.assertRaises(ValueError):
             calc_cost(order, vars_map)
+
+    def test_calc_cost_rejects_invalid_profit_margin(self) -> None:
+        vars_map = load_default_vars()
+        with self.assertRaises(ValueError):
+            calc_cost(build_order(profit_margin_on_price=1.0), vars_map)
+        with self.assertRaises(ValueError):
+            calc_cost(build_order(profit_margin_on_price=-0.1), vars_map)
+        with self.assertRaises(ValueError):
+            calc_cost(build_order(profit_margin_on_price_2=1.0), vars_map)
+        with self.assertRaises(ValueError):
+            calc_cost(build_order(profit_margin_on_price_2=-0.1), vars_map)
 
 
 class TestEmbossingLossRegression(unittest.TestCase):
