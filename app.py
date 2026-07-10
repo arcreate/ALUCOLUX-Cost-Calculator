@@ -18,6 +18,7 @@ from core import storage as core_storage
 from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH, USERS_PATH
 from core import auth as core_auth
 from core import interactive_report as core_interactive_report
+from core import agent_bundle as core_agent_bundle
 
 
 FACTORY_DEFAULT_VARS: Dict[str, float] = {
@@ -83,7 +84,11 @@ COATING_CODE_TO_LABEL = {
 }
 
 UI_TEXT = {
-    "app_title": {"中文": "ALUCOLUX® 成本计算器", "English": "ALUCOLUX® Cost Calculator"},
+    "app_title": {"中文": "ALUCOLUX® 报价系统", "English": "ALUCOLUX® Quotation System"},
+    "app_tagline": {
+        "中文": "铝塑板工程智能报价平台",
+        "English": "Aluminum Composite Panel Quotation Platform",
+    },
     "config": {"中文": "配置管理", "English": "Configuration"},
     "lang": {"中文": "界面语言", "English": "Language"},
     "import_cfg": {"中文": "导入配置(JSON)", "English": "Import Config (JSON)"},
@@ -258,6 +263,21 @@ UI_TEXT = {
     "user_role_changed": {"中文": "用户角色已更新", "English": "User role updated"},
     "user_role_unchanged": {"中文": "角色未变更", "English": "Role unchanged"},
     "permission_denied": {"中文": "无权限执行此操作", "English": "Permission denied"},
+    "agent_bundle": {"中文": "Agent 配置包", "English": "Agent setup bundle"},
+    "agent_bundle_hint": {
+        "中文": "生成 Bot 配置 ZIP，交给 Hermes Agent 后按 AGENT_SETUP.md 自动完成 Skill 与环境配置。使用 Bot API Key，无需企微 userid 映射；对用户说什么由 Skill 管控。",
+        "English": "Generate a Bot setup ZIP for Hermes Agent. Uses Bot API Key — no WeCom userid mapping. Skill controls what users see.",
+    },
+    "agent_api_base": {"中文": "API 地址", "English": "API base URL"},
+    "agent_bot_key_override": {
+        "中文": "Bot API Key（留空则读取服务器 .env.api）",
+        "English": "Bot API Key (leave blank to read server .env.api)",
+    },
+    "agent_generate": {"中文": "生成并下载 ZIP", "English": "Generate & download ZIP"},
+    "agent_key_missing": {
+        "中文": "未找到 Bot API Key。请在服务器 .env.api 配置 ALUCOLUX_BOT_API_KEY，或在上方手动填写。",
+        "English": "Bot API key not found. Set ALUCOLUX_BOT_API_KEY in .env.api or enter above.",
+    },
     "color_no_delete": {
         "中文": "高级用户不可删除颜色记录；请保留所有原有颜色代码。",
         "English": "Advanced users cannot delete color records; keep all existing color codes.",
@@ -965,14 +985,40 @@ def _ensure_auth_gate(ui_lang: str) -> None:
 
 
 def _render_login_page(ui_lang: str) -> None:
-    st.title(t("app_title", ui_lang))
-    st.subheader(t("login_title", ui_lang))
+    _, lang_col = st.columns([3, 1])
+    with lang_col:
+        picked = st.selectbox(
+            t("lang", ui_lang),
+            ["中文", "English"],
+            index=0 if st.session_state.ui_lang == "中文" else 1,
+            key="login_lang_select",
+        )
+    if picked != st.session_state.ui_lang:
+        st.session_state.ui_lang = picked
+        st.rerun()
+    ui_lang = st.session_state.ui_lang
+
+    st.title(t("app_title", "中文"))
+    st.markdown(f"**{t('app_title', 'English')}**")
+    st.caption(f"{t('app_tagline', '中文')} · {t('app_tagline', 'English')}")
+    st.divider()
+    st.subheader(f"{t('login_title', '中文')} / {t('login_title', 'English')}")
     if st.session_state.get("_show_initial_admin_hint"):
         st.info(t("initial_admin_hint", ui_lang))
     with st.form("login_form", clear_on_submit=False):
-        username = st.text_input(t("login_user", ui_lang), key="login_username_input")
-        password = st.text_input(t("login_password", ui_lang), type="password", key="login_password_input")
-        submitted = st.form_submit_button(t("login_btn", ui_lang), type="primary")
+        username = st.text_input(
+            f"{t('login_user', '中文')} / {t('login_user', 'English')}",
+            key="login_username_input",
+        )
+        password = st.text_input(
+            f"{t('login_password', '中文')} / {t('login_password', 'English')}",
+            type="password",
+            key="login_password_input",
+        )
+        submitted = st.form_submit_button(
+            f"{t('login_btn', '中文')} / {t('login_btn', 'English')}",
+            type="primary",
+        )
     if submitted:
         role = core_auth.authenticate(USERS_PATH, username.strip(), password.strip())
         if role is None:
@@ -1086,6 +1132,47 @@ def _role_display_for(role: str, ui_lang: str) -> str:
     return labels.get(role, role)
 
 
+def _render_agent_bundle(ui_lang: str) -> None:
+    if not _user_can("user_manage"):
+        return
+    with st.expander(t("agent_bundle", ui_lang), expanded=False):
+        st.caption(t("agent_bundle_hint", ui_lang))
+        api_base = st.text_input(
+            t("agent_api_base", ui_lang),
+            value=core_agent_bundle.DEFAULT_API_BASE,
+            key="agent_bundle_api_base",
+        )
+        key_override = st.text_input(
+            t("agent_bot_key_override", ui_lang),
+            type="password",
+            key="agent_bundle_bot_key_override",
+        )
+        bot_key = key_override.strip() or core_agent_bundle.read_bot_api_key()
+        if not bot_key:
+            st.warning(t("agent_key_missing", ui_lang))
+        else:
+            try:
+                zip_bytes = core_agent_bundle.build_agent_bundle_zip(
+                    api_base=api_base,
+                    bot_api_key=bot_key,
+                    app_version=APP_VERSION,
+                )
+                st.download_button(
+                    t("agent_generate", ui_lang),
+                    data=zip_bytes,
+                    file_name=core_agent_bundle.bundle_filename(APP_VERSION),
+                    mime="application/zip",
+                    key="btn_download_agent_bundle",
+                )
+            except FileNotFoundError as exc:
+                st.error(str(exc))
+            except ValueError as exc:
+                if str(exc) == "bot_api_key_missing":
+                    st.warning(t("agent_key_missing", ui_lang))
+                else:
+                    st.error(str(exc))
+
+
 def main() -> None:
     """
     业务作用
@@ -1098,7 +1185,7 @@ def main() -> None:
     - 计算公式在 core 模块
     - main 负责把输入、按钮、结果、下载、优化串起来
     """
-    st.set_page_config(page_title="ALUCOLUX® Cost Calculator", layout="wide")
+    st.set_page_config(page_title="ALUCOLUX® 报价系统 | Quotation System", layout="wide")
 
     if "ui_lang" not in st.session_state:
         st.session_state.ui_lang = "中文"
@@ -1225,6 +1312,7 @@ def main() -> None:
             st.caption(t("restore_default_hint", ui_lang))
 
         _render_user_management(ui_lang)
+        _render_agent_bundle(ui_lang)
 
         if _user_can("color_csv_import") or _user_can("color_csv_export") or _user_can("color_add"):
             with st.expander(t("color_db", ui_lang), expanded=False):

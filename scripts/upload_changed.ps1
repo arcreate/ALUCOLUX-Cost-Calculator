@@ -11,7 +11,7 @@ $Root = Split-Path $PSScriptRoot -Parent
 $BackupSh = Join-Path $Root "scripts\server_backup_prev.sh"
 $RollbackSh = Join-Path $Root "scripts\server_rollback_prev.sh"
 
-ssh $HostAlias "mkdir -p ${RemotePath}/scripts"
+ssh $HostAlias "mkdir -p ${RemotePath}/scripts ${RemotePath}/hermes/alucolux-quote"
 scp $BackupSh $RollbackSh "${HostAlias}:${RemotePath}/scripts/"
 ssh $HostAlias "sed -i 's/\r$//' ${RemotePath}/scripts/server_backup_prev.sh ${RemotePath}/scripts/server_rollback_prev.sh 2>/dev/null; chmod +x ${RemotePath}/scripts/server_backup_prev.sh ${RemotePath}/scripts/server_rollback_prev.sh"
 
@@ -33,6 +33,9 @@ $Files = @(
     @{ Local = "core\optimizer.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\paths.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\interactive_report.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\agent_bundle.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "hermes\alucolux-quote\SKILL.md"; Remote = "$RemotePath/hermes/alucolux-quote/" },
+    @{ Local = "hermes\alucolux-quote\reference.md"; Remote = "$RemotePath/hermes/alucolux-quote/" },
     @{ Local = "scripts\server_setup_https.sh"; Remote = "$RemotePath/scripts/" },
     @{ Local = "scripts\server_add_https_domain.sh"; Remote = "$RemotePath/scripts/" }
 )

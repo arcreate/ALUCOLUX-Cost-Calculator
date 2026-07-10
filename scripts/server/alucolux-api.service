@@ -1,0 +1,16 @@
+[Unit]
+Description=ALUCOLUX Quote API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/alucolux
+Environment=ALUCOLUX_APP_ROOT=/opt/alucolux
+EnvironmentFile=-/opt/alucolux/.env.api
+ExecStart=/usr/bin/python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8502 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
