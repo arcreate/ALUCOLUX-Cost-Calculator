@@ -19,6 +19,7 @@ from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH, USER
 from core import auth as core_auth
 from core import interactive_report as core_interactive_report
 from core import agent_bundle as core_agent_bundle
+from core.coating import COATING_CODE_TO_LABEL, COATING_TYPE_ORDER, TRIAL_DEFAULTS, VALID_COATING_TYPES
 
 
 FACTORY_DEFAULT_VARS: Dict[str, float] = {
@@ -60,28 +61,7 @@ FACTORY_DEFAULT_VARS: Dict[str, float] = {
 }
 
 
-TRIAL_DEFAULTS = {
-    "PVDF2": 2,
-    "PVDF3": 3,
-    "PRINT1": 3,
-    "PRINT2": 4,
-}
-
-COATING_UI_TO_CODE = {
-    "PVDF2（无印花）": "PVDF2",
-    "PVDF3（无印花）": "PVDF3",
-    "1花（印花1层）": "PRINT1",
-    "2花（印花2层）": "PRINT2",
-}
-
 APP_VERSION = "v0.3.0"
-
-COATING_CODE_TO_LABEL = {
-    "PVDF2": {"中文": "PVDF2（无印花）", "English": "PVDF2 (No print)"},
-    "PVDF3": {"中文": "PVDF3（无印花）", "English": "PVDF3 (No print)"},
-    "PRINT1": {"中文": "1花（印花1层）", "English": "1 Pattern (1 print layer)"},
-    "PRINT2": {"中文": "2花（印花2层）", "English": "2 Pattern (2 print layers)"},
-}
 
 UI_TEXT = {
     "app_title": {"中文": "ALUCOLUX® 报价系统", "English": "ALUCOLUX® Quotation System"},
@@ -129,6 +109,11 @@ UI_TEXT = {
     },
     "trial_auto": {"中文": "试机次数使用默认值", "English": "Use default trial runs"},
     "trial_times": {"中文": "试机次数", "English": "Trial runs"},
+    "charge_new_print_rolls": {"中文": "新开印花辊", "English": "New print rolls"},
+    "charge_new_print_rolls_help": {
+        "中文": "勾选时按印花层数计版辊费（每层 1 小辊 + 1 大辊）；取消表示复用现有辊，版辊费为 0。无印花时不影响计算。",
+        "English": "When checked, roll cost = print passes × (small + big roll). Uncheck to reuse existing rolls (cost 0). Ignored when there is no print.",
+    },
     "rounding_waste": {"中文": "启用长度整除浪费模型（按单板长宽向上取整块数）", "English": "Enable sheet rounding waste model (ceil by sheet size)"},
     "rounding_help": {"中文": "开启后，先按单板面积计算块数并向上取整，再以取整后的面积进入损耗计算。", "English": "When enabled, required sheets are ceiled by sheet area, then rounded area is used for loss calculations."},
     "vars": {"中文": "变量参数", "English": "Variables"},
@@ -445,7 +430,7 @@ def apply_vars_import_updates(vars_map: Dict[str, float], loaded: Dict[str, Any]
 
 def normalize_color_record(row: Dict[str, Any]) -> Dict[str, Any]:
     coating = str(row.get("coating_type", "PVDF2")).strip().upper()
-    if coating not in {"PVDF2", "PVDF3", "PRINT1", "PRINT2"}:
+    if coating not in VALID_COATING_TYPES:
         coating = "PVDF2"
     embossing_passes = int(float(row.get("embossing_passes", 0) or 0))
     embossing_passes = max(0, min(2, embossing_passes))
@@ -1373,7 +1358,7 @@ def main() -> None:
                     add_color_code = st.text_input(t("add_color_code", ui_lang), key="new_color_code")
                     add_coating = st.selectbox(
                         t("coating", ui_lang),
-                        ["PVDF2", "PVDF3", "PRINT1", "PRINT2"],
+                        COATING_TYPE_ORDER,
                         format_func=lambda code: COATING_CODE_TO_LABEL[code][ui_lang],
                         key="new_color_coating",
                     )
@@ -1492,7 +1477,7 @@ def main() -> None:
         )
     with c3:
         selected_coating_code = color_profile["coating_type"] if color_profile else "PVDF2"
-        coating_options = [COATING_CODE_TO_LABEL[v][ui_lang] for v in ["PVDF2", "PVDF3", "PRINT1", "PRINT2"]]
+        coating_options = [COATING_CODE_TO_LABEL[v][ui_lang] for v in COATING_TYPE_ORDER]
         if "order_coating_select" not in st.session_state:
             st.session_state["order_coating_select"] = COATING_CODE_TO_LABEL[selected_coating_code][ui_lang]
         if "order_embossing_select" not in st.session_state:
@@ -1514,8 +1499,14 @@ def main() -> None:
             key="order_embossing_select",
         )
         auto_trial = st.checkbox(t("trial_auto", ui_lang), value=True)
+        charge_new_print_rolls = st.checkbox(
+            t("charge_new_print_rolls", ui_lang),
+            value=True,
+            help=t("charge_new_print_rolls_help", ui_lang),
+            key="order_charge_new_print_rolls",
+        )
 
-    coating_type = ["PVDF2", "PVDF3", "PRINT1", "PRINT2"][coating_options.index(coating_ui)]
+    coating_type = COATING_TYPE_ORDER[coating_options.index(coating_ui)]
 
     if color_profile:
         # 颜色联动是业务维护的高频入口：选色后需同步工艺与关键价格，
@@ -1657,7 +1648,7 @@ def main() -> None:
                 column_config={
                     "color_code": st.column_config.TextColumn("color_code", required=True),
                     "coating_type": st.column_config.SelectboxColumn(
-                        "coating_type", options=["PVDF2", "PVDF3", "PRINT1", "PRINT2"], required=True
+                        "coating_type", options=COATING_TYPE_ORDER, required=True
                     ),
                     "embossing_passes": st.column_config.SelectboxColumn(
                         "embossing_passes", options=[0, 1, 2], required=True
@@ -1708,6 +1699,7 @@ def main() -> None:
         "trial_times": int(trial_times),
         "print_layers": int(traits["print_layers"]),
         "use_clear": bool(use_clear),
+        "charge_new_print_rolls": bool(charge_new_print_rolls),
         "use_size_rounding_waste": bool(use_size_rounding_waste),
         "cj_spot_quote": st.session_state.get("cj_spot_quote"),
         "al_quote_meta": st.session_state.get("al_quote_meta"),

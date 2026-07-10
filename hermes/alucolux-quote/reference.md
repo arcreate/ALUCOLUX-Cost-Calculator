@@ -67,16 +67,44 @@ Bot 模式：`internal` 始终存在。User 模式：仅 admin 且 `disclosure=b
 | `contract_area` | ✓ | 合同面积 ㎡ |
 | `width_m`, `length_m`, `thickness_mm` | ✓ | 单板尺寸 |
 | `color_code` | | 联动颜色库工艺 |
-| `coating_type` | | PVDF2 / PVDF3 / PRINT1 / PRINT2 |
+| `coating_type` | | PVDF2 / PVDF3 / PRINT1–PRINT4 |
+| `charge_new_print_rolls` | **印花必填** | `true` 新开辊 / `false` 复用。PRINT* 或颜色库为印花时**必须显式传入**，否则 400 |
 | `al_price_changjiang` | | 唯一可调工厂参数 |
+
+### 印花订单示例
+
+```json
+{
+  "contract_area": 1000,
+  "width_m": 1.5,
+  "length_m": 3.0,
+  "thickness_mm": 3.0,
+  "color_code": "200",
+  "coating_type": "PRINT1",
+  "charge_new_print_rolls": true
+}
+```
+
+### 无印花示例（可省略 charge_new_print_rolls）
+
+```json
+{
+  "contract_area": 1000,
+  "width_m": 1.5,
+  "length_m": 3.0,
+  "thickness_mm": 3.0,
+  "coating_type": "PVDF2"
+}
+```
 
 Margin 固定 5% + 40%，不可通过 API 修改。
 
 ## 错误码
 
-| HTTP | detail |
-|------|--------|
-| 401 | invalid_api_key |
+| HTTP | detail | Bot 处理 |
+|------|--------|----------|
+| 400 | `charge_new_print_rolls_required` | **问用户是否新开印花辊**，再带 `true`/`false` 重试 |
+| 401 | invalid_api_key | 检查 Bot Key |
 | 401 | username_required（仅 user 模式） |
 | 403 | user_not_found |
 | 403 | break_even_admin_only（仅 user 模式） |

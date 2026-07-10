@@ -120,6 +120,7 @@ def build_interactive_sections(
     loss_rate_rep = float(result.get("embossing_loss_rate", vars_map.get("EMBOSSING_LOSS_PER_PASS", 0.0)))
     batch_n = int(order.get("batch_orders", 1))
     print_layers = int(order.get("print_layers", 0))
+    charge_new_print_rolls = bool(order.get("charge_new_print_rolls", True))
     pb = float(result.get("al_processing_cost_base", result["al_processing_cost"]))
     pst = float(result.get("al_processing_cost_surcharge_thin", 0.0))
     psw = float(result.get("al_processing_cost_surcharge_wide", 0.0))
@@ -348,16 +349,19 @@ def build_interactive_sections(
             ),
         ]
         if print_layers > 0:
-            step4.append(
-                _line(
-                    _txt("- Print rolls = "),
-                    _txt(f"{print_layers} layer(s): 2×"),
-                    _t("LAB_SMALL_ROLL_COST", var_label_fn("LAB_SMALL_ROLL_COST", ui_lang)),
-                    _txt(f" + {print_layers}×"),
-                    _t("PROD_BIG_ROLL_COST", var_label_fn("PROD_BIG_ROLL_COST", ui_lang)),
-                    _txt(f" = {fmt(result['print_roll_cost'])} CNY"),
+            if charge_new_print_rolls:
+                step4.append(
+                    _line(
+                        _txt("- Print rolls = "),
+                        _txt(f"{print_layers} pass(es): {print_layers}×"),
+                        _t("LAB_SMALL_ROLL_COST", var_label_fn("LAB_SMALL_ROLL_COST", ui_lang)),
+                        _txt(f" + {print_layers}×"),
+                        _t("PROD_BIG_ROLL_COST", var_label_fn("PROD_BIG_ROLL_COST", ui_lang)),
+                        _txt(f" = {fmt(result['print_roll_cost'])} CNY"),
+                    )
                 )
-            )
+            else:
+                step4.append(_line(_txt(f"- Print rolls: {fmt(result['print_roll_cost'])} CNY (reuse existing rolls)")))
         else:
             step4.append(_line(_txt(f"- Print rolls: {fmt(result['print_roll_cost'])} CNY (no print layers)")))
         step4.extend(
@@ -644,16 +648,19 @@ def build_interactive_sections(
         ),
     ]
     if print_layers > 0:
-        step4.append(
-            _line(
-                _txt("- 印花辊 = "),
-                _txt(f"{print_layers} 层印花：2×"),
-                _t("LAB_SMALL_ROLL_COST", var_label_fn("LAB_SMALL_ROLL_COST", ui_lang)),
-                _txt(f" + {print_layers}×"),
-                _t("PROD_BIG_ROLL_COST", var_label_fn("PROD_BIG_ROLL_COST", ui_lang)),
-                _txt(f" = {fmt(result['print_roll_cost'])} 元"),
+        if charge_new_print_rolls:
+            step4.append(
+                _line(
+                    _txt("- 印花辊 = "),
+                    _txt(f"{print_layers} 层印花：{print_layers}×"),
+                    _t("LAB_SMALL_ROLL_COST", var_label_fn("LAB_SMALL_ROLL_COST", ui_lang)),
+                    _txt(f" + {print_layers}×"),
+                    _t("PROD_BIG_ROLL_COST", var_label_fn("PROD_BIG_ROLL_COST", ui_lang)),
+                    _txt(f" = {fmt(result['print_roll_cost'])} 元"),
+                )
             )
-        )
+        else:
+            step4.append(_line(_txt(f"- 印花辊: {fmt(result['print_roll_cost'])} 元（复用现有辊）")))
     else:
         step4.append(_line(_txt(f"- 印花辊: {fmt(result['print_roll_cost'])} 元（无印花层）")))
     step4.extend(

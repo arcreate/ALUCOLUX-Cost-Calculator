@@ -27,6 +27,7 @@ if (-not $SkipBackup) {
 $Files = @(
     @{ Local = "app.py"; Remote = "$RemotePath/" },
     @{ Local = "core\calculator.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\coating.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\reporting.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\storage.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\auth.py"; Remote = "$RemotePath/core/" },

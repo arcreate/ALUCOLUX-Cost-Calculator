@@ -1,6 +1,10 @@
 import math
 from typing import Any, Dict
 
+from core.coating import calc_print_roll_cost, coating_traits
+
+__all__ = ["calc_cost", "coating_traits", "calc_print_roll_cost"]
+
 
 def _validate_order_inputs(order: Dict[str, Any]) -> None:
     """
@@ -21,28 +25,6 @@ def _validate_order_inputs(order: Dict[str, Any]) -> None:
         margin = float(order.get(field, 0.0))
         if margin < 0 or margin >= 1:
             raise ValueError("invalid_profit_margin_on_price")
-
-
-def coating_traits(coating_type: str) -> Dict[str, Any]:
-    """
-    业务作用
-    --------
-    根据涂层类型代码，返回该类型对应的工艺特征：
-    - 印花层数（print_layers）
-    - 是否需要清漆（clear_required）
-
-    给非程序员的理解方式
-    --------------------
-    可以把它理解为“工艺类型字典”：
-    输入一个涂层类型，就得到后续计算油漆用量时必须知道的附加规则。
-    """
-    if coating_type == "PVDF3":
-        return {"print_layers": 0, "clear_required": True}
-    if coating_type == "PRINT1":
-        return {"print_layers": 1, "clear_required": True}
-    if coating_type == "PRINT2":
-        return {"print_layers": 2, "clear_required": True}
-    return {"print_layers": 0, "clear_required": False}
 
 
 def _calc_area_step(
@@ -170,15 +152,12 @@ def _calc_other_cost_step(
     total_al_weight: float,
     contract_area: float,
     print_layers: int,
+    charge_new_print_rolls: bool,
     embossing_passes: int,
     vars_map: Dict[str, float],
 ) -> Dict[str, Any]:
     protect_film_cost = total_prod_area * vars_map["PROTECT_FILM_PRICE"]
-    print_roll_cost = 0.0
-    if print_layers == 1:
-        print_roll_cost = 2 * vars_map["LAB_SMALL_ROLL_COST"] + 1 * vars_map["PROD_BIG_ROLL_COST"]
-    elif print_layers == 2:
-        print_roll_cost = 2 * vars_map["LAB_SMALL_ROLL_COST"] + 2 * vars_map["PROD_BIG_ROLL_COST"]
+    print_roll_cost = calc_print_roll_cost(print_layers, charge_new_print_rolls, vars_map)
     ton_base_cost = (total_al_weight / 1000) * vars_map["TON_BASE_COST"]
     open_machine_cost = vars_map["OPEN_MACHINE_FEE"] if contract_area < vars_map["OPEN_MACHINE_THRESHOLD"] else 0
     fly_cut_cost = contract_area * vars_map["FLY_CUT_PRICE"]
@@ -272,6 +251,7 @@ def calc_cost(order: Dict[str, Any], vars_map: Dict[str, float]) -> Dict[str, An
     use_clear = order["use_clear"]
     use_size_rounding_waste = order["use_size_rounding_waste"]
     embossing_passes = int(order.get("embossing_passes", 0))
+    charge_new_print_rolls = bool(order.get("charge_new_print_rolls", True))
     batch_orders = max(1, int(order.get("batch_orders", 1)))
     profit_margin_on_price = float(order.get("profit_margin_on_price", 0.0))
     profit_margin_on_price_2 = float(order.get("profit_margin_on_price_2", 0.0))
@@ -314,11 +294,13 @@ def calc_cost(order: Dict[str, Any], vars_map: Dict[str, float]) -> Dict[str, An
             total_al_weight=result["total_al_weight"],
             contract_area=contract_area,
             print_layers=print_layers,
+            charge_new_print_rolls=charge_new_print_rolls,
             embossing_passes=embossing_passes,
             vars_map=vars_map,
         )
     )
     result["batch_orders"] = batch_orders
+    result["charge_new_print_rolls"] = charge_new_print_rolls
     # 步骤5：汇总
     result.update(
         _calc_summary_step(

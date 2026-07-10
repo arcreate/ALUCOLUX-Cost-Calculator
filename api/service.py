@@ -116,6 +116,13 @@ def build_order(req: QuoteRequest) -> Tuple[Dict[str, Any], Dict[str, float]]:
         raise ValueError("invalid_coating_type")
 
     traits = coating_traits(coating_type)
+    print_layers = int(traits["print_layers"])
+    if print_layers > 0 and req.charge_new_print_rolls is None:
+        raise ValueError("charge_new_print_rolls_required")
+    charge_new_print_rolls = (
+        bool(req.charge_new_print_rolls) if req.charge_new_print_rolls is not None else True
+    )
+
     embossing_passes = req.embossing_passes
     if embossing_passes is None:
         embossing_passes = int((color_profile or {}).get("embossing_passes", 0))
@@ -139,8 +146,9 @@ def build_order(req: QuoteRequest) -> Tuple[Dict[str, Any], Dict[str, float]]:
         "coating_type": coating_type,
         "embossing_passes": int(embossing_passes),
         "trial_times": int(trial_times),
-        "print_layers": int(traits["print_layers"]),
+        "print_layers": print_layers,
         "use_clear": bool(traits["clear_required"]),
+        "charge_new_print_rolls": charge_new_print_rolls,
         "use_size_rounding_waste": bool(req.use_size_rounding_waste),
     }
     return order, vars_map

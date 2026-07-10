@@ -84,6 +84,33 @@ class TestQuoteAPI(unittest.TestCase):
         self.assertEqual(r2.status_code, 200, r2.text)
         self.assertIsNotNone(r2.json()["internal"])
 
+    def test_print1_coating_via_api(self) -> None:
+        body = {
+            **self._quote_body(),
+            "coating_type": "PRINT1",
+            "charge_new_print_rolls": False,
+        }
+        r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["public"]["coating_type"], "PRINT1")
+
+    def test_print1_requires_charge_new_print_rolls(self) -> None:
+        body = {**self._quote_body(), "coating_type": "PRINT1"}
+        r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertEqual(r.json()["detail"], "charge_new_print_rolls_required")
+
+    def test_color_code_print_requires_charge_new_print_rolls(self) -> None:
+        body = {
+            **self._quote_body(),
+            "color_code": "200",
+            "coating_type": None,
+        }
+        body.pop("coating_type", None)
+        r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertEqual(r.json()["detail"], "charge_new_print_rolls_required")
+
     def test_invalid_api_key(self) -> None:
         r = self.client.post(
             "/api/v1/quote",

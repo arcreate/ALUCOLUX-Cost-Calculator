@@ -13,13 +13,18 @@ $Files = @(
     @{ Local = "api\service.py"; Remote = "$RemotePath/api/" },
     @{ Local = "api\deps.py"; Remote = "$RemotePath/api/" },
     @{ Local = "api\main.py"; Remote = "$RemotePath/api/" },
+    @{ Local = "core\calculator.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\coating.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\paths.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\storage.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\auth.py"; Remote = "$RemotePath/core/" },
     @{ Local = "requirements-api.txt"; Remote = "$RemotePath/" },
     @{ Local = "scripts\server\alucolux-api.service"; Remote = "$RemotePath/scripts/server/" },
     @{ Local = "scripts\server\nginx\alucolux.conf"; Remote = "$RemotePath/scripts/server/nginx/" },
     @{ Local = "scripts\server_setup_api.sh"; Remote = "$RemotePath/scripts/" }
 )
 
-ssh $HostAlias "mkdir -p ${RemotePath}/api ${RemotePath}/scripts/server/nginx"
+ssh $HostAlias "mkdir -p ${RemotePath}/api ${RemotePath}/core ${RemotePath}/scripts/server/nginx"
 
 foreach ($f in $Files) {
     $src = Join-Path $Root $f.Local

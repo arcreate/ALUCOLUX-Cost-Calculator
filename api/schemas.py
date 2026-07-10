@@ -16,6 +16,10 @@ class QuoteRequest(BaseModel):
     coating_type: Optional[str] = None
     embossing_passes: Optional[int] = Field(None, ge=0, le=2)
     trial_times: Optional[int] = Field(None, ge=0)
+    charge_new_print_rolls: Optional[bool] = Field(
+        None,
+        description="是否新开印花辊。印花订单（PRINT1–4 或颜色库为印花）必须显式传入 true/false；无印花可省略。",
+    )
     use_size_rounding_waste: bool = False
     al_price_changjiang: Optional[float] = Field(None, gt=0, description="长江 A00 铝价（唯一可调工厂参数）")
     # 以下仅 user 模式（非 Bot Key）生效；Bot 模式由 Skill 管控展示

@@ -102,6 +102,7 @@ def build_optimizer_payload(
             "trial_times": int(order["trial_times"]),
             "print_layers": int(order["print_layers"]),
             "use_clear": bool(order["use_clear"]),
+            "charge_new_print_rolls": bool(order.get("charge_new_print_rolls", True)),
             "use_size_rounding_waste": bool(order["use_size_rounding_waste"]),
         },
         "vars": snapshot_vars_for_payload(vars_map, factory_default_vars),

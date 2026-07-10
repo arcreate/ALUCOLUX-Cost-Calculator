@@ -3,18 +3,11 @@ from __future__ import annotations
 import os
 from typing import Set
 
+from core.coating import TRIAL_DEFAULTS, VALID_COATING_TYPES
+
 # 固定双层 Margin（与 Web 默认一致；API 不接受客户端覆盖）
 MARGIN1 = 0.05
 MARGIN2 = 0.40
-
-TRIAL_DEFAULTS = {
-    "PVDF2": 2,
-    "PVDF3": 3,
-    "PRINT1": 3,
-    "PRINT2": 4,
-}
-
-VALID_COATING_TYPES = {"PVDF2", "PVDF3", "PRINT1", "PRINT2"}
 
 
 def api_keys() -> Set[str]:

@@ -178,6 +178,53 @@ class TestEmbossingLossRegression(unittest.TestCase):
         self.assertGreater(bumped, baseline)
 
 
+class TestPrintRollCost(unittest.TestCase):
+    def test_one_pass_roll_cost_formula(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(
+            coating_type="PRINT1",
+            print_layers=1,
+            use_clear=True,
+            charge_new_print_rolls=True,
+            trial_times=3,
+        )
+        result = calc_cost(order, vars_map)
+        expected = vars_map["LAB_SMALL_ROLL_COST"] + vars_map["PROD_BIG_ROLL_COST"]
+        self.assertAlmostEqual(result["print_roll_cost"], expected, places=6)
+
+    def test_two_pass_roll_cost_formula(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(
+            coating_type="PRINT2",
+            print_layers=2,
+            use_clear=True,
+            charge_new_print_rolls=True,
+            trial_times=4,
+        )
+        result = calc_cost(order, vars_map)
+        expected = 2 * (vars_map["LAB_SMALL_ROLL_COST"] + vars_map["PROD_BIG_ROLL_COST"])
+        self.assertAlmostEqual(result["print_roll_cost"], expected, places=6)
+
+    def test_no_charge_when_reuse_rolls(self) -> None:
+        vars_map = load_default_vars()
+        order = build_order(
+            coating_type="PRINT1",
+            print_layers=1,
+            use_clear=True,
+            charge_new_print_rolls=False,
+            trial_times=3,
+        )
+        result = calc_cost(order, vars_map)
+        self.assertAlmostEqual(result["print_roll_cost"], 0.0, places=6)
+
+    def test_print3_print4_traits(self) -> None:
+        from core.coating import coating_traits
+
+        self.assertEqual(coating_traits("PRINT3")["print_layers"], 3)
+        self.assertEqual(coating_traits("PRINT4")["print_layers"], 4)
+        self.assertTrue(coating_traits("PRINT3")["clear_required"])
+
+
 class TestOptimizerRegression(unittest.TestCase):
     def test_optimizer_generates_positive_saving_for_coordination_case(self) -> None:
         vars_map = load_default_vars()

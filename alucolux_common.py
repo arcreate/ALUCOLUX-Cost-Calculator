@@ -54,19 +54,7 @@ FACTORY_DEFAULT_VARS: Dict[str, float] = {
     "EMBOSSING_LOSS_PER_PASS": 0.0,
 }
 
-TRIAL_DEFAULTS = {
-    "PVDF2": 2,
-    "PVDF3": 3,
-    "PRINT1": 3,
-    "PRINT2": 4,
-}
-
-COATING_CODE_TO_LABEL = {
-    "PVDF2": {"中文": "PVDF2（无印花）", "English": "PVDF2 (No print)"},
-    "PVDF3": {"中文": "PVDF3（无印花）", "English": "PVDF3 (No print)"},
-    "PRINT1": {"中文": "1花（印花1层）", "English": "1 Pattern (1 print layer)"},
-    "PRINT2": {"中文": "2花（印花2层）", "English": "2 Pattern (2 print layers)"},
-}
+from core.coating import COATING_CODE_TO_LABEL, TRIAL_DEFAULTS, VALID_COATING_TYPES
 
 APP_VERSION = "v0.2.0"
 
@@ -181,7 +169,7 @@ def parse_config_json_bytes(raw: bytes) -> Dict[str, Any]:
 
 def normalize_color_record(row: Dict[str, Any]) -> Dict[str, Any]:
     coating = str(row.get("coating_type", "PVDF2")).strip().upper()
-    if coating not in {"PVDF2", "PVDF3", "PRINT1", "PRINT2"}:
+    if coating not in VALID_COATING_TYPES:
         coating = "PVDF2"
     embossing_passes = int(float(row.get("embossing_passes", 0) or 0))
     embossing_passes = max(0, min(2, embossing_passes))

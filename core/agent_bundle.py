@@ -18,7 +18,7 @@ from core.paths import app_root, bundle_root
 
 # Bot/Agent 默认走 HTTP + 已备案域名（避免 sspc 子域未备案被阿里云拦截；Agent VPS 亦免 TLS 握手问题）
 DEFAULT_API_BASE = "http://alucolux.shenliwen.cc"
-BUNDLE_VERSION = "2.0.0"
+BUNDLE_VERSION = "2.1.0"
 SKILL_DIR = "hermes/alucolux-quote"
 
 
