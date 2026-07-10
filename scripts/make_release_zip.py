@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "releases" / "ALUCOLUX-Cost-Calculator_v0.2.0_source.zip"
 
-SKIP_TOP_DIRS = frozenset({"__pycache__", ".git", ".venv", "venv", ".cursor", "archives", "dist", "build"})
+
+def read_app_version() -> str:
+    text = (ROOT / "app.py").read_text(encoding="utf-8")
+    m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
+    return m.group(1) if m else "v0.3.0"
+
+
+OUT = ROOT / "releases" / f"ALUCOLUX-Cost-Calculator_{read_app_version()}_source.zip"
+
+SKIP_TOP_DIRS = frozenset(
+    {"__pycache__", ".git", ".venv", "venv", ".cursor", "archives", "dist", "build", "dist_portable", "deploy_upload"}
+)
 SKIP_SUFFIX = frozenset({".pyc", ".pyo"})
+SKIP_REL_FILES = frozenset(
+    {
+        "数据/users.json",
+    }
+)
 
 
 def skip_path(p: Path) -> bool:
@@ -23,6 +39,8 @@ def skip_path(p: Path) -> bool:
     # 勿把历史/临时发布包再次打进新包（曾导致自包含爆炸体积）
     try:
         rel = p.relative_to(ROOT)
+        if rel.as_posix() in SKIP_REL_FILES:
+            return True
         if len(rel.parts) >= 2 and rel.parts[0] == "releases":
             s = rel.suffix.lower()
             if s == ".zip" or str(rel).endswith(".zip.tmp"):
