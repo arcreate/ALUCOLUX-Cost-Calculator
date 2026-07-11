@@ -19,6 +19,9 @@ scripts/portable/get-pip.py
 # 运行时用户账号（含密码哈希）
 数据/users.json
 
+# 参数更新计划进行中状态与历史快照
+数据/vars_campaigns/
+
 # PyInstaller
 build/
 dist/

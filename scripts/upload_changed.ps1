@@ -37,6 +37,7 @@ $Files = @(
     @{ Local = "core\agent_bundle.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\price_matrix.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\ui_draft.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\vars_campaign.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\production_limits.py"; Remote = "$RemotePath/core/" },
     @{ Local = "hermes\alucolux-quote\SKILL.md"; Remote = "$RemotePath/hermes/alucolux-quote/" },
     @{ Local = "hermes\alucolux-quote\reference.md"; Remote = "$RemotePath/hermes/alucolux-quote/" },

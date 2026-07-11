@@ -45,6 +45,8 @@ PERMISSIONS: Dict[str, Set[str]] = {
     "optimizer": {ROLE_ADMIN, ROLE_ADVANCED},
     "price_matrix": {ROLE_ADMIN, ROLE_ADVANCED},
     "price_matrix_export": {ROLE_ADMIN, ROLE_ADVANCED},
+    "vars_campaign": {ROLE_ADMIN},
+    "vars_campaign_history": {ROLE_ADMIN},
     "user_manage": {ROLE_ADMIN},
 }
 

@@ -170,6 +170,8 @@ def ensure_runtime_layout() -> None:
     data_dir().mkdir(parents=True, exist_ok=True)
     manual_dir().mkdir(parents=True, exist_ok=True)
     (data_dir() / "saved_calculations").mkdir(parents=True, exist_ok=True)
+    (data_dir() / "vars_campaigns").mkdir(parents=True, exist_ok=True)
+    (data_dir() / "vars_campaigns" / "history").mkdir(parents=True, exist_ok=True)
 
     _migrate_legacy_files()
     _seed_from_bundle()
@@ -183,3 +185,6 @@ SAVED_DEFAULT_PATH = data_dir() / "default_config.json"
 CALC_LIBRARY_DIR = data_dir() / "saved_calculations"
 COLOR_DB_PATH = data_dir() / "color_cost_db.csv"
 USERS_PATH = data_dir() / "users.json"
+VARS_CAMPAIGN_DIR = data_dir() / "vars_campaigns"
+VARS_CAMPAIGN_CURRENT_PATH = VARS_CAMPAIGN_DIR / "current.json"
+VARS_CAMPAIGN_HISTORY_DIR = VARS_CAMPAIGN_DIR / "history"

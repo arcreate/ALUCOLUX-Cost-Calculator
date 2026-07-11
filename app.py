@@ -21,6 +21,7 @@ from core import interactive_report as core_interactive_report
 from core import agent_bundle as core_agent_bundle
 from core import price_matrix as core_price_matrix
 from core import ui_draft as core_ui_draft
+from core import vars_campaign as core_vars_campaign
 from core.coating import COATING_CODE_TO_LABEL, COATING_TYPE_ORDER, TRIAL_DEFAULTS, VALID_COATING_TYPES
 from core.production_limits import MAX_THICKNESS_MM, MAX_WIDTH_M, MIN_THICKNESS_MM, validate_production_dimensions
 
@@ -322,6 +323,71 @@ UI_TEXT = {
     "price_matrix_col_area": {"中文": "面积", "English": "Area"},
     "price_matrix_col_roll_cost": {"中文": "辊费成本(元)", "English": "Roll cost (CNY)"},
     "price_matrix_col_roll_cost_usd": {"中文": "辊费成本(USD)", "English": "Roll cost (USD)"},
+    "main_tab_vars_campaign": {"中文": "参数更新计划", "English": "Parameter update plan"},
+    "vu_collector_title": {"中文": "系统变量核对与修正", "English": "Review & correct system variables"},
+    "vu_collector_hint": {
+        "中文": "请核对下列成本计算变量。修正值留空表示不改；可中途保存。提交后本链接立即作废。",
+        "English": "Review cost variables below. Leave correction empty to keep current. You may save a draft. This link expires on submit.",
+    },
+    "vu_closed": {
+        "中文": "此更新链接已关闭或无效（可能已提交，或计划已取消）。",
+        "English": "This update link is closed or invalid (already submitted or cancelled).",
+    },
+    "vu_col_var": {"中文": "变量", "English": "Variable"},
+    "vu_col_current": {"中文": "当前值", "English": "Current"},
+    "vu_col_correction": {"中文": "修正值（可空）", "English": "Correction (optional)"},
+    "vu_col_baseline": {"中文": "原值", "English": "Baseline"},
+    "vu_col_submitted": {"中文": "提交值", "English": "Submitted"},
+    "vu_col_admin_edit": {"中文": "管理员修正", "English": "Admin correction"},
+    "vu_note": {"中文": "备注（可选）", "English": "Note (optional)"},
+    "vu_save_draft": {"中文": "保存草稿", "English": "Save draft"},
+    "vu_submit": {"中文": "提交修正", "English": "Submit"},
+    "vu_confirm_submit": {
+        "中文": "我确认已核对完毕，提交后不可再改（链接将作废）。",
+        "English": "I confirm review is complete; submit is final (link will expire).",
+    },
+    "vu_draft_saved": {"中文": "草稿已保存", "English": "Draft saved"},
+    "vu_submitted_ok": {"中文": "已提交，感谢。本链接已作废。", "English": "Submitted. This link is now closed."},
+    "vu_admin_title": {"中文": "参数更新计划", "English": "Parameter update plan"},
+    "vu_admin_desc": {
+        "中文": "发起后生成专属链接供核对填写；对方提交后链接作废，由您终审并写入默认参数。历史仅提供下载，不会自动回滚。",
+        "English": "Create a private link for review. After submit the link expires; you finalize into defaults. History is download-only (no auto-rollback).",
+    },
+    "vu_active_warn": {
+        "中文": "有进行中的参数更新计划，请勿同时用侧栏「保存为默认」改同一套参数。",
+        "English": "An update plan is active — avoid also using sidebar Save defaults for the same vars.",
+    },
+    "vu_create": {"中文": "发起新的更新计划", "English": "Start new update plan"},
+    "vu_create_confirm": {
+        "中文": "确认发起？将冻结当前已保存默认参数作为基准。",
+        "English": "Start plan? Current saved defaults will be frozen as baseline.",
+    },
+    "vu_created": {"中文": "已发起。请复制下方链接发给核对人。", "English": "Started. Copy the link below."},
+    "vu_share_url": {"中文": "专属链接", "English": "Private link"},
+    "vu_status_collecting": {"中文": "收集中（等待对方提交）", "English": "Collecting (awaiting submit)"},
+    "vu_status_review": {"中文": "待管理员终审", "English": "Awaiting admin final review"},
+    "vu_cancel": {"中文": "取消本计划", "English": "Cancel plan"},
+    "vu_cancel_ok": {"中文": "计划已取消", "English": "Plan cancelled"},
+    "vu_admin_save": {"中文": "保存审核草稿", "English": "Save review draft"},
+    "vu_final_confirm": {"中文": "最终确认并写入默认参数", "English": "Finalize & write defaults"},
+    "vu_final_checkbox": {
+        "中文": "确认将下列参数写入系统默认（不可撤销，仅可通过历史文件手动导入）。",
+        "English": "Confirm writing these values as system defaults (history download only for recovery).",
+    },
+    "vu_final_ok": {
+        "中文": "默认参数已更新。请各用户使用「恢复已保存的默认参数」刷新会话。",
+        "English": "Defaults updated. Users should Restore saved defaults to refresh their session.",
+    },
+    "vu_history_title": {"中文": "默认参数历史（下载）", "English": "Default history (download)"},
+    "vu_history_hint": {
+        "中文": "下载某次生效后的配置 JSON，需要时用侧栏「导入配置」载入计算；要永久生效再点「保存为默认参数」。不会自动回滚。",
+        "English": "Download a snapshot JSON; Import via sidebar to use in calculation, then Save as defaults if needed. No auto-rollback.",
+    },
+    "vu_history_empty": {"中文": "暂无历史记录", "English": "No history yet"},
+    "vu_download_after": {"中文": "下载生效后配置", "English": "Download after snapshot"},
+    "vu_download_before": {"中文": "下载生效前配置", "English": "Download before snapshot"},
+    "vu_no_active": {"中文": "当前没有进行中的更新计划。", "English": "No active update plan."},
+    "vu_changed_count": {"中文": "相对原值变更项数", "English": "Changed vs baseline"},
 }
 
 COLOR_DB_COLUMNS = ["color_code", "coating_type", "embossing_passes", "face_paint_price", "clear_paint_price", "updated_at"]
@@ -1893,6 +1959,317 @@ def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
                 st.warning(f"{t('optimizer_invalid', ui_lang)}: {', '.join(invalid_files)}")
 
 
+def _get_vu_token_from_query() -> str:
+    try:
+        raw = st.query_params.get("vu", "")
+    except Exception:
+        return ""
+    if isinstance(raw, list):
+        raw = raw[0] if raw else ""
+    return str(raw or "").strip()
+
+
+def _guess_public_base_url() -> str:
+    try:
+        headers = st.context.headers
+        host = headers.get("Host") or headers.get("host") or ""
+        if not host:
+            return ""
+        proto = headers.get("X-Forwarded-Proto") or headers.get("x-forwarded-proto") or "https"
+        return f"{proto}://{host}"
+    except Exception:
+        return ""
+
+
+def _ensure_vu_zebra_css() -> None:
+    """交错底纹：用 :has() 给含标记的整行 HorizontalBlock 上色，避免看错行。"""
+    if st.session_state.get("_vu_zebra_css_injected"):
+        return
+    st.session_state["_vu_zebra_css_injected"] = True
+    st.markdown(
+        """
+<style>
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-a) {
+  background-color: #e8eef5;
+  border: 1px solid #d0dae6;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem 0.25rem 0.7rem;
+  margin: 0.15rem 0 0.4rem 0;
+}
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-b) {
+  background-color: #f7f9fb;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem 0.25rem 0.7rem;
+  margin: 0.15rem 0 0.4rem 0;
+}
+/* 输入框与行底纹区分：白底 + 可见边框 */
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-a) div[data-baseweb="input"] > div,
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-b) div[data-baseweb="input"] > div,
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-a) [data-testid="stNumberInput"] div[data-baseweb="input"] > div,
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-b) [data-testid="stNumberInput"] div[data-baseweb="input"] > div {
+  background-color: #ffffff !important;
+  border: 1px solid #9aa8b8 !important;
+  border-radius: 6px !important;
+}
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-a) input,
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-b) input {
+  background-color: #ffffff !important;
+  color: #1a202c !important;
+}
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-a) input:disabled,
+div[data-testid="stHorizontalBlock"]:has(.vu-stripe-b) input:disabled {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+  opacity: 1 !important;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _vu_stripe_marker(row_index: int) -> str:
+    return "vu-stripe-a" if row_index % 2 == 0 else "vu-stripe-b"
+
+
+def _render_vars_campaign_collector(ui_lang: str, token: str) -> None:
+    lang = st.selectbox(
+        t("lang", ui_lang),
+        ["中文", "English"],
+        index=0 if ui_lang == "中文" else 1,
+        key="vu_collector_lang",
+    )
+    st.session_state.ui_lang = lang
+    ui_lang = lang
+
+    just_submitted = bool(st.session_state.pop("_vu_submitted_ok", False))
+    campaign = core_vars_campaign.get_by_token(token)
+    if campaign is None or campaign.get("status") != core_vars_campaign.STATUS_COLLECTING:
+        st.title(t("vu_collector_title", ui_lang))
+        if just_submitted:
+            st.success(t("vu_submitted_ok", ui_lang))
+        st.warning(t("vu_closed", ui_lang))
+        return
+
+    baseline = {str(k): float(v) for k, v in (campaign.get("baseline_vars") or {}).items()}
+    proposed_saved = {str(k): float(v) for k, v in (campaign.get("proposed_vars") or {}).items()}
+    keys = sorted(baseline.keys())
+
+    st.title(t("vu_collector_title", ui_lang))
+    st.caption(t("vu_collector_hint", ui_lang))
+    if st.session_state.pop("_vu_draft_saved", False):
+        st.success(t("vu_draft_saved", ui_lang))
+
+    note = st.text_area(
+        t("vu_note", ui_lang),
+        value=str(campaign.get("collector_note") or ""),
+        key="vu_collector_note",
+    )
+
+    _ensure_vu_zebra_css()
+    for row_i, key in enumerate(keys):
+        stripe = _vu_stripe_marker(row_i)
+        c1, c2, c3 = st.columns([2.2, 1.0, 1.2])
+        with c1:
+            st.markdown(
+                f'<span class="{stripe}"></span>**{format_var_label(key, ui_lang)}**',
+                unsafe_allow_html=True,
+            )
+            st.caption(key)
+        with c2:
+            st.text_input(
+                t("vu_col_current", ui_lang),
+                value=f"{baseline[key]:.6g}",
+                disabled=True,
+                key=f"vu_cur_{key}",
+            )
+        with c3:
+            default_corr = ""
+            if key in proposed_saved and abs(proposed_saved[key] - baseline[key]) > 1e-12:
+                default_corr = f"{proposed_saved[key]:.6g}"
+            widget_key = f"vu_corr_{key}"
+            if widget_key not in st.session_state:
+                st.session_state[widget_key] = default_corr
+            st.text_input(t("vu_col_correction", ui_lang), key=widget_key)
+
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button(t("vu_save_draft", ui_lang), key="vu_btn_draft"):
+            overrides = {key: st.session_state.get(f"vu_corr_{key}", "") for key in keys}
+            proposed = core_vars_campaign.merge_proposed_from_overrides(baseline, overrides)
+            try:
+                core_vars_campaign.save_draft(proposed, collector_note=note)
+                st.session_state["_vu_draft_saved"] = True
+                st.rerun()
+            except core_vars_campaign.CampaignError as exc:
+                st.error(str(exc))
+
+    confirm = st.checkbox(t("vu_confirm_submit", ui_lang), key="vu_confirm_cb")
+    with b2:
+        if st.button(t("vu_submit", ui_lang), type="primary", key="vu_btn_submit", disabled=not confirm):
+            overrides = {key: st.session_state.get(f"vu_corr_{key}", "") for key in keys}
+            proposed = core_vars_campaign.merge_proposed_from_overrides(baseline, overrides)
+            try:
+                core_vars_campaign.submit_collector(proposed, token=token, collector_note=note)
+                st.session_state["_vu_submitted_ok"] = True
+                st.rerun()
+            except core_vars_campaign.CampaignError as exc:
+                st.error(str(exc))
+
+
+def _render_vars_campaign_admin(ui_lang: str, username: str) -> None:
+    st.markdown(f"### {t('vu_admin_title', ui_lang)}")
+    st.caption(t("vu_admin_desc", ui_lang))
+
+    campaign = core_vars_campaign.load_current()
+    if campaign is not None:
+        st.warning(t("vu_active_warn", ui_lang))
+
+    if campaign is None:
+        st.info(t("vu_no_active", ui_lang))
+        confirm_create = st.checkbox(t("vu_create_confirm", ui_lang), key="vu_admin_create_cb")
+        if st.button(t("vu_create", ui_lang), type="primary", disabled=not confirm_create, key="vu_admin_create"):
+            try:
+                baseline = load_default_vars()
+                camp = core_vars_campaign.create_campaign(baseline, created_by=username)
+                st.session_state["_vu_just_created"] = camp.get("token")
+                st.rerun()
+            except core_vars_campaign.CampaignError as exc:
+                st.error(str(exc))
+    else:
+        status = campaign.get("status")
+        if status == core_vars_campaign.STATUS_COLLECTING:
+            st.info(t("vu_status_collecting", ui_lang))
+        else:
+            st.info(t("vu_status_review", ui_lang))
+
+        token = str(campaign.get("token") or "")
+        base = _guess_public_base_url()
+        share = core_vars_campaign.build_public_url(base, token)
+        st.text_input(t("vu_share_url", ui_lang), value=share, key="vu_share_url_display")
+        if not base:
+            st.caption(f"?vu={token}")
+
+        baseline = {str(k): float(v) for k, v in (campaign.get("baseline_vars") or {}).items()}
+        proposed = {str(k): float(v) for k, v in (campaign.get("proposed_vars") or {}).items()}
+        changed = core_vars_campaign.changed_keys(baseline, proposed)
+        st.caption(f"{t('vu_changed_count', ui_lang)}: {len(changed)}")
+        if campaign.get("collector_note"):
+            st.caption(f"{t('vu_note', ui_lang)}: {campaign.get('collector_note')}")
+
+        if status == core_vars_campaign.STATUS_ADMIN_REVIEW:
+            keys = sorted(baseline.keys())
+            _ensure_vu_zebra_css()
+            for row_i, key in enumerate(keys):
+                stripe = _vu_stripe_marker(row_i)
+                c1, c2, c3, c4 = st.columns([2.0, 0.9, 0.9, 1.0])
+                with c1:
+                    st.markdown(
+                        f'<span class="{stripe}"></span>**{format_var_label(key, ui_lang)}**',
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(key)
+                with c2:
+                    st.text_input(
+                        t("vu_col_baseline", ui_lang),
+                        value=f"{baseline[key]:.6g}",
+                        disabled=True,
+                        key=f"vu_adm_base_{key}",
+                    )
+                with c3:
+                    st.text_input(
+                        t("vu_col_submitted", ui_lang),
+                        value=f"{proposed.get(key, baseline[key]):.6g}",
+                        disabled=True,
+                        key=f"vu_adm_sub_{key}",
+                    )
+                with c4:
+                    edit_key = f"vu_adm_edit_{key}"
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = float(proposed.get(key, baseline[key]))
+                    st.number_input(
+                        t("vu_col_admin_edit", ui_lang),
+                        format="%.6f",
+                        key=edit_key,
+                    )
+
+            if st.button(t("vu_admin_save", ui_lang), key="vu_admin_save_btn"):
+                edited = {k: float(st.session_state.get(f"vu_adm_edit_{k}", proposed.get(k, baseline[k]))) for k in keys}
+                try:
+                    core_vars_campaign.save_draft(edited)
+                    st.success(t("vu_draft_saved", ui_lang))
+                    st.rerun()
+                except core_vars_campaign.CampaignError as exc:
+                    st.error(str(exc))
+
+            final_ok = st.checkbox(t("vu_final_checkbox", ui_lang), key="vu_final_cb")
+            if st.button(t("vu_final_confirm", ui_lang), type="primary", disabled=not final_ok, key="vu_final_btn"):
+                edited = {k: float(st.session_state.get(f"vu_adm_edit_{k}", proposed.get(k, baseline[k]))) for k in keys}
+                try:
+                    core_vars_campaign.apply_final(
+                        edited,
+                        save_default_vars_fn=save_default_vars,
+                        load_default_vars_fn=load_default_vars,
+                    )
+                    st.session_state.vars_map = load_default_vars()
+                    _refresh_vars_widgets_from_vars_map()
+                    st.session_state["_vu_final_ok"] = True
+                    st.rerun()
+                except core_vars_campaign.CampaignError as exc:
+                    st.error(str(exc))
+                except Exception as exc:
+                    st.error(f"{t('save_default_fail', ui_lang)}: {exc}")
+
+        if st.button(t("vu_cancel", ui_lang), key="vu_admin_cancel"):
+            try:
+                core_vars_campaign.cancel_campaign()
+                st.session_state["_vu_cancel_ok"] = True
+                st.rerun()
+            except core_vars_campaign.CampaignError as exc:
+                st.error(str(exc))
+
+    if st.session_state.pop("_vu_final_ok", False):
+        st.success(t("vu_final_ok", ui_lang))
+    if st.session_state.pop("_vu_cancel_ok", False):
+        st.success(t("vu_cancel_ok", ui_lang))
+    if st.session_state.pop("_vu_just_created", None):
+        st.success(t("vu_created", ui_lang))
+
+    st.divider()
+    st.markdown(f"#### {t('vu_history_title', ui_lang)}")
+    st.caption(t("vu_history_hint", ui_lang))
+    entries = core_vars_campaign.list_history()
+    if not entries:
+        st.info(t("vu_history_empty", ui_lang))
+    else:
+        for entry in entries:
+            label = entry.get("applied_at") or entry.get("stamp") or ""
+            st.markdown(f"**{label}**")
+            after_text = core_vars_campaign.read_history_file(entry, which="after")
+            before_text = core_vars_campaign.read_history_file(entry, which="before")
+            d1, d2 = st.columns(2)
+            with d1:
+                if after_text:
+                    st.download_button(
+                        label=t("vu_download_after", ui_lang),
+                        data=after_text,
+                        file_name=entry.get("download_name") or f"alucolux_config_{entry.get('stamp')}.json",
+                        mime="application/json",
+                        key=f"vu_dl_after_{entry.get('stamp')}",
+                    )
+            with d2:
+                if before_text:
+                    st.download_button(
+                        label=t("vu_download_before", ui_lang),
+                        data=before_text,
+                        file_name=f"alucolux_config_{entry.get('stamp')}_before.json",
+                        mime="application/json",
+                        key=f"vu_dl_before_{entry.get('stamp')}",
+                    )
+
+
 def main() -> None:
     """
     业务作用
@@ -1905,7 +2282,14 @@ def main() -> None:
     - 计算公式在 core 模块
     - main 负责把输入、按钮、结果、下载、优化串起来
     """
+    # 专属收集页：免登录，尽早分流
     st.set_page_config(page_title="ALUCOLUX® 报价系统 | Quotation System", layout="wide")
+    if "ui_lang" not in st.session_state:
+        st.session_state.ui_lang = "中文"
+    vu_token = _get_vu_token_from_query()
+    if vu_token:
+        _render_vars_campaign_collector(st.session_state.ui_lang, vu_token)
+        return
 
     if "ui_lang" not in st.session_state:
         st.session_state.ui_lang = "中文"
@@ -1990,6 +2374,8 @@ def main() -> None:
             st.success(t("import_ok", ui_lang))
         if st.session_state.pop("_show_config_restore_ok", False):
             st.success(t("restored", ui_lang))
+        if core_vars_campaign.has_active_campaign() and _user_can("vars_campaign"):
+            st.warning(t("vu_active_warn", ui_lang))
 
         if _user_can("config_import"):
             uploaded = st.file_uploader(t("import_cfg", ui_lang), type=["json"])
@@ -2147,7 +2533,19 @@ def main() -> None:
                             st.success(t("add_color_ok", ui_lang))
 
     st.title(t("app_title", ui_lang))
-    if _user_can("price_matrix"):
+    show_pm = _user_can("price_matrix")
+    show_vu = _user_can("vars_campaign")
+    if show_pm and show_vu:
+        tab_quote, tab_price_matrix, tab_vu = st.tabs(
+            [t("main_tab_quote", ui_lang), t("main_tab_price_matrix", ui_lang), t("main_tab_vars_campaign", ui_lang)]
+        )
+        with tab_quote:
+            _render_quotation_page(ui_lang, role, username)
+        with tab_price_matrix:
+            _render_price_matrix(ui_lang)
+        with tab_vu:
+            _render_vars_campaign_admin(ui_lang, username)
+    elif show_pm:
         tab_quote, tab_price_matrix = st.tabs(
             [t("main_tab_quote", ui_lang), t("main_tab_price_matrix", ui_lang)]
         )
@@ -2155,6 +2553,14 @@ def main() -> None:
             _render_quotation_page(ui_lang, role, username)
         with tab_price_matrix:
             _render_price_matrix(ui_lang)
+    elif show_vu:
+        tab_quote, tab_vu = st.tabs(
+            [t("main_tab_quote", ui_lang), t("main_tab_vars_campaign", ui_lang)]
+        )
+        with tab_quote:
+            _render_quotation_page(ui_lang, role, username)
+        with tab_vu:
+            _render_vars_campaign_admin(ui_lang, username)
     else:
         _render_quotation_page(ui_lang, role, username)
 
