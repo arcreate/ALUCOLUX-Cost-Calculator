@@ -115,6 +115,13 @@ class TestCalculatorRegression(unittest.TestCase):
         with self.assertRaises(ValueError):
             calc_cost(build_order(profit_margin_on_price_2=-0.1), vars_map)
 
+    def test_ultra_wide_at_1_5m_exclusive(self) -> None:
+        vars_map = load_default_vars()
+        at_threshold = calc_cost(build_order(width_m=1.5), vars_map)
+        above_threshold = calc_cost(build_order(width_m=1.55), vars_map)
+        self.assertFalse(at_threshold["al_coil_ultra_wide_applied"])
+        self.assertTrue(above_threshold["al_coil_ultra_wide_applied"])
+
 
 class TestEmbossingLossRegression(unittest.TestCase):
     """压花损耗口径（2026-06 确认）：成品需求按 (1 - 每道损耗率)^道数 逐道嵌套放大投产面积。"""

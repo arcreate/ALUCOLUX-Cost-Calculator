@@ -112,13 +112,23 @@ class TestQuoteAPI(unittest.TestCase):
         self.assertEqual(r.json()["detail"], "charge_new_print_rolls_required")
 
     def test_width_exceeds_production_limit(self) -> None:
-        body = {**self._quote_body(), "width_m": 1.8}
+        body = {**self._quote_body(), "width_m": 1.61}
         r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
         self.assertEqual(r.status_code, 400, r.text)
         self.assertEqual(r.json()["detail"], "width_exceeds_production_limit")
 
     def test_width_at_max_is_allowed(self) -> None:
         body = {**self._quote_body(), "width_m": 1.6}
+        r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_width_at_ultra_wide_threshold_not_exceeding(self) -> None:
+        body = {**self._quote_body(), "width_m": 1.5}
+        r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
+        self.assertEqual(r.status_code, 200, r.text)
+
+    def test_width_ultra_wide_within_production_limit(self) -> None:
+        body = {**self._quote_body(), "width_m": 1.55}
         r = self.client.post("/api/v1/quote", json=body, headers=self.bot_headers)
         self.assertEqual(r.status_code, 200, r.text)
 

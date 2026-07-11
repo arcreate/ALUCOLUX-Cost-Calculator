@@ -19,7 +19,9 @@ from core.paths import CALC_LIBRARY_DIR, COLOR_DB_PATH, SAVED_DEFAULT_PATH, USER
 from core import auth as core_auth
 from core import interactive_report as core_interactive_report
 from core import agent_bundle as core_agent_bundle
+from core import price_matrix as core_price_matrix
 from core.coating import COATING_CODE_TO_LABEL, COATING_TYPE_ORDER, TRIAL_DEFAULTS, VALID_COATING_TYPES
+from core.production_limits import MAX_THICKNESS_MM, MAX_WIDTH_M, MIN_THICKNESS_MM, validate_production_dimensions
 
 
 FACTORY_DEFAULT_VARS: Dict[str, float] = {
@@ -34,7 +36,7 @@ FACTORY_DEFAULT_VARS: Dict[str, float] = {
     "AL_COIL_PROCESSING_FEE_ULTRA_THIN_DELTA": 0.0,
     "AL_COIL_PROCESSING_FEE_ULTRA_WIDE_DELTA": 0.0,
     "AL_COIL_ULTRA_THIN_THRESHOLD_MM": 0.8,
-    "AL_COIL_ULTRA_WIDE_THRESHOLD_M": 1.6,
+    "AL_COIL_ULTRA_WIDE_THRESHOLD_M": 1.5,
     "PRE_TREATMENT_PER_TON": 500.0,
     "BASE_PAINT_PRICE": 43.5,
     "BACK_PAINT_PRICE": 43.0,
@@ -119,6 +121,14 @@ UI_TEXT = {
     "vars": {"中文": "变量参数", "English": "Variables"},
     "calc": {"中文": "一键计算", "English": "Calculate"},
     "invalid": {"中文": "合同面积、宽度、长度、厚度都必须大于0。", "English": "Contract area, width, length, and thickness must be greater than 0."},
+    "width_exceeds_production_limit": {
+        "中文": f"单板宽度超出辊涂线生产范围（最大 {MAX_WIDTH_M} m，含）。",
+        "English": f"Sheet width exceeds production limit (max {MAX_WIDTH_M} m inclusive).",
+    },
+    "thickness_out_of_production_range": {
+        "中文": f"板厚须在 {MIN_THICKNESS_MM}–{MAX_THICKNESS_MM} mm（含）之间。",
+        "English": f"Thickness must be between {MIN_THICKNESS_MM} and {MAX_THICKNESS_MM} mm (inclusive).",
+    },
     "output": {"中文": "计算输出", "English": "Calculation Output"},
     "export_format": {"中文": "导出格式", "English": "Export Format"},
     "download": {"中文": "下载报告", "English": "Download Report"},
@@ -279,6 +289,31 @@ UI_TEXT = {
         "English": "Click a blue ◆ variable ◆ to edit temporarily and recalculate. Changes are not saved to defaults or the library.",
     },
     "sandbox_export_title": {"中文": "导出当前试算报告", "English": "Export current sandbox report"},
+    "main_tab_quote": {"中文": "报价计算", "English": "Quotation"},
+    "main_tab_price_matrix": {"中文": "价格速查表", "English": "Price quick reference"},
+    "price_matrix_title": {"中文": "价格速查表", "English": "Price quick reference"},
+    "price_matrix_desc": {
+        "中文": "固定宽 1.5 m、长 3 m、1 批、默认漆价。主矩阵单价含新开印花辊（印花工艺），销售可直接引用；下方另列辊费总额供复用辊时扣减。",
+        "English": "Fixed 1.5 m width, 3 m length, 1 batch, default paint. Matrix unit prices include new print rolls; roll lump sums below for reuse deduction.",
+    },
+    "price_matrix_refresh": {"中文": "生成 / 刷新", "English": "Generate / refresh"},
+    "price_matrix_slice_emboss": {"中文": "压花道数", "English": "Embossing passes"},
+    "price_matrix_currency": {"中文": "显示 / 导出货币", "English": "Display / export currency"},
+    "price_matrix_currency_cny": {"中文": "人民币 (元/㎡)", "English": "CNY/m²"},
+    "price_matrix_currency_usd": {"中文": "美元 (USD/㎡)", "English": "USD/m²"},
+    "price_matrix_currency_both": {"中文": "双列 (元/㎡ + USD/㎡)", "English": "Both (CNY & USD per m²)"},
+    "price_matrix_main": {"中文": "主矩阵（板厚 × 工艺 × 面积）", "English": "Main matrix (thickness × coating × area)"},
+    "price_matrix_print_rolls": {"中文": "新开印花辊参考价", "English": "New print roll reference"},
+    "price_matrix_print_rolls_hint": {
+        "中文": "主矩阵单价已含新开辊（印花工艺）。下表为每种印花的辊费销售总额（不按面积摊薄）。客户复用现有辊时：**订单总额 − 对应行的新开辊费总额**。",
+        "English": "Matrix unit prices already include new rolls for print coatings. Below: lump-sum roll fee per coating (not per m²). Deduct from order total when reusing rolls.",
+    },
+    "price_matrix_export_csv": {"中文": "导出 CSV", "English": "Export CSV"},
+    "price_matrix_col_thickness": {"中文": "厚度", "English": "Thickness"},
+    "price_matrix_col_area": {"中文": "面积", "English": "Area"},
+    "price_matrix_col_roll_cost": {"中文": "辊费成本(元)", "English": "Roll cost (CNY)"},
+    "price_matrix_col_roll_selling": {"中文": "新开辊费总额(元)", "English": "New roll total (CNY)"},
+    "price_matrix_col_roll_selling_usd": {"中文": "新开辊费总额(USD)", "English": "New roll total (USD)"},
 }
 
 COLOR_DB_COLUMNS = ["color_code", "coating_type", "embossing_passes", "face_paint_price", "clear_paint_price", "updated_at"]
@@ -731,6 +766,144 @@ div[data-testid="stHorizontalBlock"] div[data-testid="stPopover"] > button {
         st.download_button(t("download", ui_lang), data=data, file_name=filename, mime=mime, key="btn_sandbox_download")
 
 
+def _render_price_matrix(ui_lang: str) -> None:
+    st.caption(t("price_matrix_desc", ui_lang))
+
+    _sync_vars_map_from_var_widget_keys()
+    vars_map = dict(st.session_state.vars_map)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        margin1 = float(
+            st.number_input(
+                t("profit_margin_on_price", ui_lang),
+                min_value=0.0,
+                max_value=0.99,
+                value=0.05,
+                step=0.01,
+                format="%.2f",
+                key="pm_margin1",
+            )
+        )
+    with c2:
+        margin2 = float(
+            st.number_input(
+                t("profit_margin_on_price_2", ui_lang),
+                min_value=0.0,
+                max_value=0.99,
+                value=0.40,
+                step=0.01,
+                format="%.2f",
+                key="pm_margin2",
+            )
+        )
+    with c3:
+        currency_labels = [
+            t("price_matrix_currency_cny", ui_lang),
+            t("price_matrix_currency_usd", ui_lang),
+            t("price_matrix_currency_both", ui_lang),
+        ]
+        currency_pick = st.selectbox(
+            t("price_matrix_currency", ui_lang),
+            currency_labels,
+            index=0,
+            key="pm_currency",
+        )
+
+    currency_mode = "cny"
+    if currency_pick == currency_labels[1]:
+        currency_mode = "usd"
+    elif currency_pick == currency_labels[2]:
+        currency_mode = "both"
+
+    emboss = int(
+        st.selectbox(
+            t("price_matrix_slice_emboss", ui_lang),
+            core_price_matrix.EMBOSSING_STEPS,
+            index=0,
+            key="pm_emboss",
+        )
+    )
+
+    refresh = st.button(t("price_matrix_refresh", ui_lang), type="primary", key="btn_pm_refresh")
+    if refresh or st.session_state.get("price_matrix_cache") is None:
+        cfg = core_price_matrix.MatrixConfig(emboss, margin1, margin2)
+        nested = core_price_matrix.build_nested_matrix(vars_map, cfg, currency_mode)
+        matrix_rows = core_price_matrix.nested_matrix_to_flat_rows(nested)
+        wide_matrix_rows = core_price_matrix.build_integrated_matrix_rows(vars_map, cfg, currency_mode)
+        print_rows = core_price_matrix.build_print_roll_table(
+            vars_map,
+            margin1=margin1,
+            margin2=margin2,
+        )
+        assumptions = core_price_matrix.matrix_assumption_lines(
+            cfg,
+            ui_lang=ui_lang,
+            exchange_rate=float(vars_map.get("EXCHANGE_RATE", 6.85)),
+        )
+        st.session_state.price_matrix_cache = {
+            "nested_matrix": nested,
+            "matrix_rows": matrix_rows,
+            "wide_matrix_rows": wide_matrix_rows,
+            "print_rows": print_rows,
+            "assumptions": assumptions,
+            "currency_mode": currency_mode,
+        }
+
+    cache = st.session_state.get("price_matrix_cache") or {}
+    assumptions = cache.get("assumptions", [])
+    for line in assumptions:
+        st.caption(line)
+
+    nested = cache.get("nested_matrix") or []
+    matrix_rows = cache.get("matrix_rows", [])
+    if nested:
+        st.markdown(f"#### {t('price_matrix_main', ui_lang)}")
+        table_html = core_price_matrix.nested_matrix_to_html(
+            nested,
+            ui_lang=ui_lang,
+            col_thickness=t("price_matrix_col_thickness", ui_lang),
+            col_area=t("price_matrix_col_area", ui_lang),
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
+    elif matrix_rows:
+        st.markdown(f"#### {t('price_matrix_main', ui_lang)}")
+        st.dataframe(matrix_rows, use_container_width=True)
+
+    print_rows = cache.get("print_rows", [])
+    if print_rows:
+        st.markdown(f"#### {t('price_matrix_print_rolls', ui_lang)}")
+        st.caption(t("price_matrix_print_rolls_hint", ui_lang))
+        coat_col = t("coating", ui_lang)
+        roll_cny_col = t("price_matrix_col_roll_selling", ui_lang)
+        roll_usd_col = t("price_matrix_col_roll_selling_usd", ui_lang)
+        display_print_rows = [
+            {
+                coat_col: COATING_CODE_TO_LABEL.get(str(row["coating_type"]), {}).get(ui_lang, row["coating_type"]),
+                roll_cny_col: row["print_roll_selling_total"],
+                roll_usd_col: row["print_roll_selling_usd"],
+            }
+            for row in print_rows
+        ]
+        st.dataframe(display_print_rows, use_container_width=True, hide_index=True)
+
+    if _user_can("price_matrix_export") and matrix_rows:
+        csv_data = core_price_matrix.export_matrix_csv(
+            matrix_rows=matrix_rows,
+            print_roll_rows=print_rows,
+            assumptions=assumptions,
+            currency=currency_mode,
+            wide_matrix_rows=cache.get("wide_matrix_rows"),
+        )
+        st.download_button(
+            t("price_matrix_export_csv", ui_lang),
+            data=csv_data,
+            file_name="alucolux_price_matrix.csv",
+            mime="text/csv",
+            key="btn_pm_export_csv",
+        )
+
+
 def format_var_label(var_key: str, ui_lang: str) -> str:
     meta = VAR_META.get(var_key)
     if not meta:
@@ -1158,247 +1331,8 @@ def _render_agent_bundle(ui_lang: str) -> None:
                     st.error(str(exc))
 
 
-def main() -> None:
-    """
-    业务作用
-    --------
-    应用主入口：负责初始化会话状态、渲染配置区与计算区、驱动导出与优化流程。
 
-    给非程序员的理解方式
-    --------------------
-    可把这里看成“页面编排器”：
-    - 计算公式在 core 模块
-    - main 负责把输入、按钮、结果、下载、优化串起来
-    """
-    st.set_page_config(page_title="ALUCOLUX® 报价系统 | Quotation System", layout="wide")
-
-    if "ui_lang" not in st.session_state:
-        st.session_state.ui_lang = "中文"
-    _ensure_auth_gate(st.session_state.ui_lang)
-
-    if "vars_map" not in st.session_state:
-        st.session_state.vars_map = load_default_vars()
-    else:
-        for _k, _v in FACTORY_DEFAULT_VARS.items():
-            if _k not in st.session_state.vars_map:
-                st.session_state.vars_map[_k] = float(_v)
-    # Backward compatibility for old processing fee key.
-    if "AL_PROCESSING_FEE_PER_M2" in st.session_state.vars_map and "AL_COIL_PROCESSING_FEE" not in st.session_state.vars_map:
-        st.session_state.vars_map["AL_COIL_PROCESSING_FEE"] = float(st.session_state.vars_map["AL_PROCESSING_FEE_PER_M2"])
-    if "AL_PROCESSING_FEE_PER_M2" in st.session_state.vars_map:
-        st.session_state.vars_map.pop("AL_PROCESSING_FEE_PER_M2", None)
-    if "last_report" not in st.session_state:
-        st.session_state.last_report = ""
-    if "last_export_report" not in st.session_state:
-        st.session_state.last_export_report = ""
-    if "last_optimizer_payload" not in st.session_state:
-        st.session_state.last_optimizer_payload = None
-    if "calc_lib_opt_ids" not in st.session_state:
-        st.session_state.calc_lib_opt_ids = None
-    if "last_calc_result" not in st.session_state:
-        st.session_state.last_calc_result = None
-    if "sandbox_order" not in st.session_state:
-        st.session_state.sandbox_order = None
-    if "sandbox_vars" not in st.session_state:
-        st.session_state.sandbox_vars = None
-    if "sandbox_result" not in st.session_state:
-        st.session_state.sandbox_result = None
-    if "sandbox_baseline_order" not in st.session_state:
-        st.session_state.sandbox_baseline_order = None
-    if "sandbox_baseline_vars" not in st.session_state:
-        st.session_state.sandbox_baseline_vars = None
-    if "color_db" not in st.session_state:
-        st.session_state.color_db = load_color_db()
-    if "_color_db_rev" not in st.session_state:
-        st.session_state._color_db_rev = 0
-    if "cj_spot_quote" not in st.session_state:
-        st.session_state.cj_spot_quote = None
-    if "al_quote_meta" not in st.session_state:
-        st.session_state.al_quote_meta = None
-    if "al_cj_input_version" not in st.session_state:
-        st.session_state.al_cj_input_version = 0
-    if "vars_map_widget_version" not in st.session_state:
-        st.session_state.vars_map_widget_version = 0
-
-    role = _auth_role()
-    username = _auth_username()
-
-    with st.sidebar:
-        ui_lang = st.selectbox(t("lang", st.session_state.ui_lang), ["中文", "English"], index=0 if st.session_state.ui_lang == "中文" else 1)
-        st.session_state.ui_lang = ui_lang
-        st.caption(f"{t('logged_in_as', ui_lang)}: **{username}**")
-        st.caption(f"{t('role_label', ui_lang)}: {_role_display(ui_lang)}")
-        if st.button(t("logout_btn", ui_lang), key="btn_logout"):
-            st.session_state.auth_user = None
-            st.session_state.auth_role = None
-            st.rerun()
-        if st.session_state.pop("_show_initial_admin_hint", False):
-            st.warning(t("initial_admin_hint", ui_lang))
-
-        st.subheader(t("config", ui_lang))
-        # 侧栏先于主区：先把上一轮用户在「变量参数」里改过的值从控件 key 拉回 vars_map
-        _sync_vars_map_from_var_widget_keys()
-        if st.session_state.pop("_show_config_import_ok", False):
-            st.success(t("import_ok", ui_lang))
-        if st.session_state.pop("_show_config_restore_ok", False):
-            st.success(t("restored", ui_lang))
-
-        if _user_can("config_import"):
-            uploaded = st.file_uploader(t("import_cfg", ui_lang), type=["json"])
-        else:
-            uploaded = None
-        if uploaded is not None:
-            _cfg_blob = uploaded.getvalue()
-            _cfg_sig = f"{uploaded.name}:{hashlib.md5(_cfg_blob).hexdigest()}"
-            if st.session_state.get("_config_import_sig") != _cfg_sig:
-                st.session_state["_config_import_sig"] = _cfg_sig
-                try:
-                    text = _cfg_blob.decode("utf-8-sig")
-                    loaded = json.loads(text)
-                    # 复制为新 dict 再写回：仅对 session_state.vars_map 原地 mutate 时，
-                    # Streamlit 可能未把变更传入后续 widget 渲染，导致界面仍为「恢复默认」后的旧值。
-                    vm = dict(st.session_state.vars_map)
-                    apply_vars_import_updates(vm, loaded)
-                    st.session_state.vars_map = vm
-                    _refresh_vars_widgets_from_vars_map()
-                    _refresh_config_export_cache()
-                    st.session_state.last_report = ""
-                    st.session_state.last_export_report = ""
-                    st.session_state.last_optimizer_payload = None
-                    st.session_state["_show_config_import_ok"] = True
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"{t('import_fail', ui_lang)}: {exc}")
-
-        if _user_can("config_export"):
-            cfg_text = _sidebar_config_export_text()
-            st.download_button(
-                label=t("export_cfg", ui_lang),
-                data=cfg_text,
-                file_name="alucolux_config.json",
-                mime="application/json",
-            )
-
-        if _user_can("restore_default") and st.button(t("restore_default", ui_lang)):
-            st.session_state.vars_map = load_default_vars()
-            _refresh_vars_widgets_from_vars_map()
-            st.session_state.last_report = ""
-            st.session_state.last_export_report = ""
-            st.session_state.last_optimizer_payload = None
-            st.session_state["_show_config_restore_ok"] = True
-            st.rerun()
-        if _user_can("save_default") and st.button(t("save_default", ui_lang)):
-            try:
-                save_default_vars(st.session_state.vars_map)
-                st.success(t("saved_default", ui_lang))
-            except Exception as exc:
-                st.error(f"{t('save_default_fail', ui_lang)}: {exc}")
-        if _user_can("restore_default"):
-            st.caption(t("restore_default_hint", ui_lang))
-
-        _render_user_management(ui_lang)
-        _render_agent_bundle(ui_lang)
-
-        if _user_can("color_csv_import") or _user_can("color_csv_export") or _user_can("color_add"):
-            with st.expander(t("color_db", ui_lang), expanded=False):
-                st.caption(f"{t('color_count', ui_lang)}: {len(st.session_state.color_db)}")
-                if _user_can("color_csv_export"):
-                    st.download_button(
-                        label=t("export_color_db", ui_lang),
-                        data=color_db_to_csv_text(st.session_state.color_db),
-                        file_name="color_cost_db.csv",
-                        mime="text/csv",
-                    )
-
-                if _user_can("color_csv_import"):
-                    import_mode = st.radio(
-                        t("import_mode", ui_lang),
-                        ["merge", "replace"],
-                        format_func=lambda v: t("mode_merge", ui_lang) if v == "merge" else t("mode_replace", ui_lang),
-                        horizontal=True,
-                    )
-                    dup_strategy = st.selectbox(
-                        t("dup_strategy", ui_lang),
-                        ["latest", "imported", "existing"],
-                        format_func=lambda v: (
-                            t("dup_latest", ui_lang)
-                            if v == "latest"
-                            else t("dup_imported", ui_lang)
-                            if v == "imported"
-                            else t("dup_existing", ui_lang)
-                        ),
-                    )
-                    color_uploaded = st.file_uploader(t("import_color_db", ui_lang), type=["csv"], key="color_db_import")
-                    if color_uploaded is not None:
-                        _blob = color_uploaded.getvalue()
-                        sig = f"{color_uploaded.name}:{hashlib.md5(_blob).hexdigest()}"
-                        if st.session_state.get("_color_csv_sig") != sig:
-                            st.session_state["_color_csv_sig"] = sig
-                            try:
-                                text = _blob.decode("utf-8-sig")
-                                reader = csv.DictReader(io.StringIO(text))
-                                imported_rows = []
-                                for row in reader:
-                                    normalized = normalize_color_record(row)
-                                    if normalized["color_code"]:
-                                        imported_rows.append(normalized)
-                                if import_mode == "replace":
-                                    merged_rows = merge_color_rows([], imported_rows, dup_strategy)
-                                else:
-                                    merged_rows = merge_color_rows(st.session_state.color_db, imported_rows, dup_strategy)
-                                st.session_state.color_db = merged_rows
-                                save_color_db(merged_rows)
-                                _bump_color_db_editor_rev()
-                                st.success(f"{t('import_color_ok', ui_lang)}: {len(imported_rows)}")
-                            except Exception as exc:
-                                st.error(f"{t('import_color_fail', ui_lang)}: {exc}")
-
-                if _user_can("color_add"):
-                    st.markdown(f"**{t('sample_color', ui_lang)}**")
-                    add_color_code = st.text_input(t("add_color_code", ui_lang), key="new_color_code")
-                    add_coating = st.selectbox(
-                        t("coating", ui_lang),
-                        COATING_TYPE_ORDER,
-                        format_func=lambda code: COATING_CODE_TO_LABEL[code][ui_lang],
-                        key="new_color_coating",
-                    )
-                    add_embossing = st.selectbox(
-                        t("embossing_passes", ui_lang),
-                        options=[0, 1, 2],
-                        index=0,
-                        key="new_color_embossing",
-                    )
-                    add_face = st.number_input(
-                        format_var_label("FACE_PAINT_PRICE", ui_lang),
-                        value=float(st.session_state.vars_map["FACE_PAINT_PRICE"]),
-                        format="%.6f",
-                        key="new_color_face_price",
-                    )
-                    add_clear = st.number_input(
-                        format_var_label("CLEAR_PAINT_PRICE", ui_lang),
-                        value=float(st.session_state.vars_map["CLEAR_PAINT_PRICE"]),
-                        format="%.6f",
-                        key="new_color_clear_price",
-                    )
-                    if st.button(t("add_color_btn", ui_lang), key="add_color_record_btn"):
-                        code = add_color_code.strip()
-                        if not code:
-                            st.error(t("add_color_invalid", ui_lang))
-                        else:
-                            new_row = {
-                                "color_code": code,
-                                "coating_type": add_coating,
-                                "embossing_passes": int(add_embossing),
-                                "face_paint_price": float(add_face),
-                                "clear_paint_price": float(add_clear),
-                                "updated_at": datetime.now().isoformat(timespec="seconds"),
-                            }
-                            st.session_state.color_db = merge_color_rows(st.session_state.color_db, [new_row], "imported")
-                            save_color_db(st.session_state.color_db)
-                            _bump_color_db_editor_rev()
-                            st.success(t("add_color_ok", ui_lang))
-
-    st.title(t("app_title", ui_lang))
+def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
     st.subheader(t("order", ui_lang))
 
     lib_project_names = collect_library_project_names(role, username)
@@ -1446,7 +1380,15 @@ def main() -> None:
         contract_area = float(
             st.number_input(t("contract_area", ui_lang), min_value=0.001, value=1000.0, step=1.0, format="%.3f")
         )
-        width_m = st.number_input(t("width", ui_lang), min_value=0.001, value=1.5, step=0.001, format="%.3f")
+        width_m = st.number_input(
+            t("width", ui_lang),
+            min_value=0.001,
+            max_value=MAX_WIDTH_M,
+            value=1.5,
+            step=0.001,
+            format="%.3f",
+            help={"中文": f"辊涂线最大宽度 {MAX_WIDTH_M} m（含）", "English": f"Max production width {MAX_WIDTH_M} m (inclusive)"}[ui_lang],
+        )
         batch_orders = st.number_input(t("batch_orders", ui_lang), min_value=1, value=1, step=1)
     with c2:
         length_m = st.number_input(t("length", ui_lang), min_value=0.001, value=3.00, step=0.001, format="%.3f")
@@ -1734,6 +1676,18 @@ def main() -> None:
                 st.error(t("invalid", ui_lang))
             _refresh_config_export_cache()
             return
+        try:
+            validate_production_dimensions(float(width_m), float(thickness_mm))
+        except ValueError as exc:
+            code = str(exc)
+            if code == "width_exceeds_production_limit":
+                st.error(t("width_exceeds_production_limit", ui_lang))
+            elif code == "thickness_out_of_production_range":
+                st.error(t("thickness_out_of_production_range", ui_lang))
+            else:
+                st.error(t("invalid", ui_lang))
+            _refresh_config_export_cache()
+            return
         pn_calc = str(st.session_state.get("order_project_name", "")).strip()
         if pn_calc in collect_library_project_names(role, username):
             st.error(t("project_name_dup_block", ui_lang))
@@ -1889,6 +1843,259 @@ def main() -> None:
                 st.info(t("optimizer_no_data", ui_lang))
             if invalid_files:
                 st.warning(f"{t('optimizer_invalid', ui_lang)}: {', '.join(invalid_files)}")
+
+
+def main() -> None:
+    """
+    业务作用
+    --------
+    应用主入口：负责初始化会话状态、渲染配置区与计算区、驱动导出与优化流程。
+
+    给非程序员的理解方式
+    --------------------
+    可把这里看成“页面编排器”：
+    - 计算公式在 core 模块
+    - main 负责把输入、按钮、结果、下载、优化串起来
+    """
+    st.set_page_config(page_title="ALUCOLUX® 报价系统 | Quotation System", layout="wide")
+
+    if "ui_lang" not in st.session_state:
+        st.session_state.ui_lang = "中文"
+    _ensure_auth_gate(st.session_state.ui_lang)
+
+    if "vars_map" not in st.session_state:
+        st.session_state.vars_map = load_default_vars()
+    else:
+        for _k, _v in FACTORY_DEFAULT_VARS.items():
+            if _k not in st.session_state.vars_map:
+                st.session_state.vars_map[_k] = float(_v)
+    # Backward compatibility for old processing fee key.
+    if "AL_PROCESSING_FEE_PER_M2" in st.session_state.vars_map and "AL_COIL_PROCESSING_FEE" not in st.session_state.vars_map:
+        st.session_state.vars_map["AL_COIL_PROCESSING_FEE"] = float(st.session_state.vars_map["AL_PROCESSING_FEE_PER_M2"])
+    if "AL_PROCESSING_FEE_PER_M2" in st.session_state.vars_map:
+        st.session_state.vars_map.pop("AL_PROCESSING_FEE_PER_M2", None)
+    if "last_report" not in st.session_state:
+        st.session_state.last_report = ""
+    if "last_export_report" not in st.session_state:
+        st.session_state.last_export_report = ""
+    if "last_optimizer_payload" not in st.session_state:
+        st.session_state.last_optimizer_payload = None
+    if "calc_lib_opt_ids" not in st.session_state:
+        st.session_state.calc_lib_opt_ids = None
+    if "last_calc_result" not in st.session_state:
+        st.session_state.last_calc_result = None
+    if "sandbox_order" not in st.session_state:
+        st.session_state.sandbox_order = None
+    if "sandbox_vars" not in st.session_state:
+        st.session_state.sandbox_vars = None
+    if "sandbox_result" not in st.session_state:
+        st.session_state.sandbox_result = None
+    if "sandbox_baseline_order" not in st.session_state:
+        st.session_state.sandbox_baseline_order = None
+    if "sandbox_baseline_vars" not in st.session_state:
+        st.session_state.sandbox_baseline_vars = None
+    if "color_db" not in st.session_state:
+        st.session_state.color_db = load_color_db()
+    if "_color_db_rev" not in st.session_state:
+        st.session_state._color_db_rev = 0
+    if "cj_spot_quote" not in st.session_state:
+        st.session_state.cj_spot_quote = None
+    if "al_quote_meta" not in st.session_state:
+        st.session_state.al_quote_meta = None
+    if "al_cj_input_version" not in st.session_state:
+        st.session_state.al_cj_input_version = 0
+    if "vars_map_widget_version" not in st.session_state:
+        st.session_state.vars_map_widget_version = 0
+
+    role = _auth_role()
+    username = _auth_username()
+
+    with st.sidebar:
+        ui_lang = st.selectbox(t("lang", st.session_state.ui_lang), ["中文", "English"], index=0 if st.session_state.ui_lang == "中文" else 1)
+        st.session_state.ui_lang = ui_lang
+        st.caption(f"{t('logged_in_as', ui_lang)}: **{username}**")
+        st.caption(f"{t('role_label', ui_lang)}: {_role_display(ui_lang)}")
+        if st.button(t("logout_btn", ui_lang), key="btn_logout"):
+            st.session_state.auth_user = None
+            st.session_state.auth_role = None
+            st.rerun()
+        if st.session_state.pop("_show_initial_admin_hint", False):
+            st.warning(t("initial_admin_hint", ui_lang))
+
+        st.subheader(t("config", ui_lang))
+        # 侧栏先于主区：先把上一轮用户在「变量参数」里改过的值从控件 key 拉回 vars_map
+        _sync_vars_map_from_var_widget_keys()
+        if st.session_state.pop("_show_config_import_ok", False):
+            st.success(t("import_ok", ui_lang))
+        if st.session_state.pop("_show_config_restore_ok", False):
+            st.success(t("restored", ui_lang))
+
+        if _user_can("config_import"):
+            uploaded = st.file_uploader(t("import_cfg", ui_lang), type=["json"])
+        else:
+            uploaded = None
+        if uploaded is not None:
+            _cfg_blob = uploaded.getvalue()
+            _cfg_sig = f"{uploaded.name}:{hashlib.md5(_cfg_blob).hexdigest()}"
+            if st.session_state.get("_config_import_sig") != _cfg_sig:
+                st.session_state["_config_import_sig"] = _cfg_sig
+                try:
+                    text = _cfg_blob.decode("utf-8-sig")
+                    loaded = json.loads(text)
+                    # 复制为新 dict 再写回：仅对 session_state.vars_map 原地 mutate 时，
+                    # Streamlit 可能未把变更传入后续 widget 渲染，导致界面仍为「恢复默认」后的旧值。
+                    vm = dict(st.session_state.vars_map)
+                    apply_vars_import_updates(vm, loaded)
+                    st.session_state.vars_map = vm
+                    _refresh_vars_widgets_from_vars_map()
+                    _refresh_config_export_cache()
+                    st.session_state.last_report = ""
+                    st.session_state.last_export_report = ""
+                    st.session_state.last_optimizer_payload = None
+                    st.session_state["_show_config_import_ok"] = True
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"{t('import_fail', ui_lang)}: {exc}")
+
+        if _user_can("config_export"):
+            cfg_text = _sidebar_config_export_text()
+            st.download_button(
+                label=t("export_cfg", ui_lang),
+                data=cfg_text,
+                file_name="alucolux_config.json",
+                mime="application/json",
+            )
+
+        if _user_can("restore_default") and st.button(t("restore_default", ui_lang)):
+            st.session_state.vars_map = load_default_vars()
+            _refresh_vars_widgets_from_vars_map()
+            st.session_state.last_report = ""
+            st.session_state.last_export_report = ""
+            st.session_state.last_optimizer_payload = None
+            st.session_state["_show_config_restore_ok"] = True
+            st.rerun()
+        if _user_can("save_default") and st.button(t("save_default", ui_lang)):
+            try:
+                save_default_vars(st.session_state.vars_map)
+                st.success(t("saved_default", ui_lang))
+            except Exception as exc:
+                st.error(f"{t('save_default_fail', ui_lang)}: {exc}")
+        if _user_can("restore_default"):
+            st.caption(t("restore_default_hint", ui_lang))
+
+        _render_user_management(ui_lang)
+        _render_agent_bundle(ui_lang)
+
+        if _user_can("color_csv_import") or _user_can("color_csv_export") or _user_can("color_add"):
+            with st.expander(t("color_db", ui_lang), expanded=False):
+                st.caption(f"{t('color_count', ui_lang)}: {len(st.session_state.color_db)}")
+                if _user_can("color_csv_export"):
+                    st.download_button(
+                        label=t("export_color_db", ui_lang),
+                        data=color_db_to_csv_text(st.session_state.color_db),
+                        file_name="color_cost_db.csv",
+                        mime="text/csv",
+                    )
+
+                if _user_can("color_csv_import"):
+                    import_mode = st.radio(
+                        t("import_mode", ui_lang),
+                        ["merge", "replace"],
+                        format_func=lambda v: t("mode_merge", ui_lang) if v == "merge" else t("mode_replace", ui_lang),
+                        horizontal=True,
+                    )
+                    dup_strategy = st.selectbox(
+                        t("dup_strategy", ui_lang),
+                        ["latest", "imported", "existing"],
+                        format_func=lambda v: (
+                            t("dup_latest", ui_lang)
+                            if v == "latest"
+                            else t("dup_imported", ui_lang)
+                            if v == "imported"
+                            else t("dup_existing", ui_lang)
+                        ),
+                    )
+                    color_uploaded = st.file_uploader(t("import_color_db", ui_lang), type=["csv"], key="color_db_import")
+                    if color_uploaded is not None:
+                        _blob = color_uploaded.getvalue()
+                        sig = f"{color_uploaded.name}:{hashlib.md5(_blob).hexdigest()}"
+                        if st.session_state.get("_color_csv_sig") != sig:
+                            st.session_state["_color_csv_sig"] = sig
+                            try:
+                                text = _blob.decode("utf-8-sig")
+                                reader = csv.DictReader(io.StringIO(text))
+                                imported_rows = []
+                                for row in reader:
+                                    normalized = normalize_color_record(row)
+                                    if normalized["color_code"]:
+                                        imported_rows.append(normalized)
+                                if import_mode == "replace":
+                                    merged_rows = merge_color_rows([], imported_rows, dup_strategy)
+                                else:
+                                    merged_rows = merge_color_rows(st.session_state.color_db, imported_rows, dup_strategy)
+                                st.session_state.color_db = merged_rows
+                                save_color_db(merged_rows)
+                                _bump_color_db_editor_rev()
+                                st.success(f"{t('import_color_ok', ui_lang)}: {len(imported_rows)}")
+                            except Exception as exc:
+                                st.error(f"{t('import_color_fail', ui_lang)}: {exc}")
+
+                if _user_can("color_add"):
+                    st.markdown(f"**{t('sample_color', ui_lang)}**")
+                    add_color_code = st.text_input(t("add_color_code", ui_lang), key="new_color_code")
+                    add_coating = st.selectbox(
+                        t("coating", ui_lang),
+                        COATING_TYPE_ORDER,
+                        format_func=lambda code: COATING_CODE_TO_LABEL[code][ui_lang],
+                        key="new_color_coating",
+                    )
+                    add_embossing = st.selectbox(
+                        t("embossing_passes", ui_lang),
+                        options=[0, 1, 2],
+                        index=0,
+                        key="new_color_embossing",
+                    )
+                    add_face = st.number_input(
+                        format_var_label("FACE_PAINT_PRICE", ui_lang),
+                        value=float(st.session_state.vars_map["FACE_PAINT_PRICE"]),
+                        format="%.6f",
+                        key="new_color_face_price",
+                    )
+                    add_clear = st.number_input(
+                        format_var_label("CLEAR_PAINT_PRICE", ui_lang),
+                        value=float(st.session_state.vars_map["CLEAR_PAINT_PRICE"]),
+                        format="%.6f",
+                        key="new_color_clear_price",
+                    )
+                    if st.button(t("add_color_btn", ui_lang), key="add_color_record_btn"):
+                        code = add_color_code.strip()
+                        if not code:
+                            st.error(t("add_color_invalid", ui_lang))
+                        else:
+                            new_row = {
+                                "color_code": code,
+                                "coating_type": add_coating,
+                                "embossing_passes": int(add_embossing),
+                                "face_paint_price": float(add_face),
+                                "clear_paint_price": float(add_clear),
+                                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                            }
+                            st.session_state.color_db = merge_color_rows(st.session_state.color_db, [new_row], "imported")
+                            save_color_db(st.session_state.color_db)
+                            _bump_color_db_editor_rev()
+                            st.success(t("add_color_ok", ui_lang))
+
+    st.title(t("app_title", ui_lang))
+    if _user_can("price_matrix"):
+        tab_quote, tab_price_matrix = st.tabs(
+            [t("main_tab_quote", ui_lang), t("main_tab_price_matrix", ui_lang)]
+        )
+        with tab_quote:
+            _render_quotation_page(ui_lang, role, username)
+        with tab_price_matrix:
+            _render_price_matrix(ui_lang)
+    else:
+        _render_quotation_page(ui_lang, role, username)
 
     _refresh_config_export_cache()
 

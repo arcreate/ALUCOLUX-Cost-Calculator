@@ -4,6 +4,7 @@ from __future__ import annotations
 MIN_THICKNESS_MM = 0.67
 MAX_THICKNESS_MM = 3.0
 MAX_WIDTH_M = 1.6  # 含 1.6 m；严格大于 1.6 m 不可生产
+ULTRA_WIDE_THRESHOLD_M = 1.5  # 超宽：宽度严格大于 1.5 m（不含 1.5）
 
 
 def validate_production_dimensions(width_m: float, thickness_mm: float) -> None:

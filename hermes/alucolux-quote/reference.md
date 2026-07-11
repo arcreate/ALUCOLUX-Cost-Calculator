@@ -69,12 +69,13 @@ Bot 模式：`internal` 始终存在。User 模式：仅 admin 且 `disclosure=b
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `contract_area` | ✓ | 合同面积 ㎡ |
-| `width_m`, `length_m` | ✓ | 单板宽度、长度（m）；**宽度 ≤ 1.6（含）** |
+| `width_m`, `length_m` | ✓ | 单板宽度、长度（m）；**宽度 ≤ 1.6（含）**；**> 1.5 m 为超宽（不含 1.5）** |
 | `thickness_mm` | ✓ | **铝材厚度** 0.67–3 mm（含）；非复合板总厚 |
 | `color_code` | | 联动颜色库工艺 |
 | `coating_type` | | PVDF2 / PVDF3 / PRINT1–PRINT4 |
 | `charge_new_print_rolls` | **印花必填** | `true` 新开辊 / `false` 复用。PRINT* 或颜色库为印花时**必须显式传入**，否则 400 |
-| `al_price_changjiang` | | 唯一可调工厂参数 |
+
+> **Bot 模式：** 不传 `al_price_changjiang`，铝锭价由服务器默认配置决定；Agent 不得向用户收集或调整铝价。
 
 ### 印花订单示例
 

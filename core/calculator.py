@@ -86,7 +86,7 @@ def _calc_aluminum_step(total_prod_area: float, width_m: float, thickness_mm: fl
     price_ingot = float(vars_map.get("AL_PRICE_A00_CHANGJIANG", legacy_al))
     al_fee_base_kg = float(vars_map.get("AL_COIL_PROCESSING_FEE", 2.2))
     thin_thr_mm = float(vars_map.get("AL_COIL_ULTRA_THIN_THRESHOLD_MM", 0.8))
-    wide_thr_m = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.6))
+    wide_thr_m = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.5))
     delta_thin_cfg = float(vars_map.get("AL_COIL_PROCESSING_FEE_ULTRA_THIN_DELTA", 0.0))
     delta_wide_cfg = float(vars_map.get("AL_COIL_PROCESSING_FEE_ULTRA_WIDE_DELTA", 0.0))
     is_ultra_thin = thickness_mm <= thin_thr_mm

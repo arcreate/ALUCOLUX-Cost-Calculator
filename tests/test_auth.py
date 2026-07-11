@@ -27,6 +27,8 @@ class TestAuthModule(unittest.TestCase):
         self.assertFalse(core_auth.can(core_auth.ROLE_BASIC, "report_full"))
         self.assertFalse(core_auth.can(core_auth.ROLE_ADVANCED, "color_delete"))
         self.assertTrue(core_auth.can(core_auth.ROLE_ADMIN, "color_delete"))
+        self.assertTrue(core_auth.can(core_auth.ROLE_ADVANCED, "price_matrix"))
+        self.assertFalse(core_auth.can(core_auth.ROLE_BASIC, "price_matrix"))
 
     def test_library_visibility_and_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

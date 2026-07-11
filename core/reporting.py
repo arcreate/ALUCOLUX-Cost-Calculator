@@ -275,7 +275,7 @@ def build_report(
         d_wide = float(result.get("al_coil_processing_fee_applied_delta_wide_kg", 0.0))
         eff_fee = float(result["al_coil_processing_fee_per_kg"])
         thr_t = float(vars_map.get("AL_COIL_ULTRA_THIN_THRESHOLD_MM", 0.8))
-        thr_w = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.6))
+        thr_w = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.5))
         lines.append(_al_coil_fee_tier_line(result, ui_lang))
         lines.append(f"- Al coil processing fee — regular base (CNY/kg): {base_fee:.4f}")
         lines.append(
@@ -320,7 +320,7 @@ def build_report(
         d_wide = float(result.get("al_coil_processing_fee_applied_delta_wide_kg", 0.0))
         eff_fee = float(result["al_coil_processing_fee_per_kg"])
         thr_t = float(vars_map.get("AL_COIL_ULTRA_THIN_THRESHOLD_MM", 0.8))
-        thr_w = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.6))
+        thr_w = float(vars_map.get("AL_COIL_ULTRA_WIDE_THRESHOLD_M", 1.5))
         lines.append(_al_coil_fee_tier_line(result, ui_lang))
         lines.append(f"- 铝卷加工费·常规基价（元/kg）: {base_fee:.4f}")
         lines.append(f"- 铝卷加工费·超薄增量落地（元/kg，当板厚 ≤ {thr_t:.3f} mm 时计入）: {d_thin:.4f}")

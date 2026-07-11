@@ -43,6 +43,8 @@ PERMISSIONS: Dict[str, Set[str]] = {
     "calc_library_view": {ROLE_ADMIN, ROLE_ADVANCED},
     "calc_library_delete": {ROLE_ADMIN, ROLE_ADVANCED},
     "optimizer": {ROLE_ADMIN, ROLE_ADVANCED},
+    "price_matrix": {ROLE_ADMIN, ROLE_ADVANCED},
+    "price_matrix_export": {ROLE_ADMIN, ROLE_ADVANCED},
     "user_manage": {ROLE_ADMIN},
 }
 
