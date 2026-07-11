@@ -5,9 +5,9 @@ from typing import Set
 
 from core.coating import TRIAL_DEFAULTS, VALID_COATING_TYPES
 
-# 固定双层 Margin（与 Web 默认一致；API 不接受客户端覆盖）
-MARGIN1 = 0.05
-MARGIN2 = 0.40
+# 固定双层 Margin（仅 API/Bot；Web 端在 app.py 独立默认 5% + 40%，不受此处影响）
+MARGIN1 = 0.0
+MARGIN2 = 0.35
 
 
 def api_keys() -> Set[str]:

@@ -18,7 +18,7 @@ from core.paths import app_root, bundle_root
 
 # Bot/Agent 默认走 HTTP + 已备案域名（避免 sspc 子域未备案被阿里云拦截；Agent VPS 亦免 TLS 握手问题）
 DEFAULT_API_BASE = "http://alucolux.shenliwen.cc"
-BUNDLE_VERSION = "2.1.0"
+BUNDLE_VERSION = "2.3.1"
 SKILL_DIR = "hermes/alucolux-quote"
 
 
@@ -106,9 +106,9 @@ bash verify/test_api.sh
 
 ## 第五步：Skill 保密规则（必遵）
 
-- 日常报价：**只**用 `public` 字段回复用户
-- `internal` 含保本价等 — **禁止**主动展示
-- 仅当用户为管理员且完成「内部复核 → 确认复核」流程后，才可引用 `internal`
+- 日常报价：**只**用 `public` 回复；**禁止主动**问用户要不要查成本/内部复核
+- `internal` 含保本价等 — **禁止主动展示、禁止主动 Offer**
+- 仅当**用户先提出**内部复核且完成「确认复核」后，才可引用 `internal`
 - 谁能在 Bot 里触发内部复核 — 由 **Hermes/企微 Bot 平台** 配置，非 ALUCOLUX 映射
 
 ## 第六步：向管理员确认

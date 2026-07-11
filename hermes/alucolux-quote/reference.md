@@ -1,5 +1,9 @@
 # ALUCOLUX Quote API 参考（Bot 模式）
 
+> **产品范围：** 本 API 仅适用于 **ALUCOLUX 辊涂铝单板**（彩涂铝卷/单板）。  
+> **不适用：** 铝塑板、铝复合板、阿鲁克邦（ALUCOBOND）、含芯材与复合板总厚的成套板。  
+> Bot 在调用 quote 前须先确认用户需求属于本产品；否则应拒答，**禁止**调用本 API。
+
 Base URL（Bot 推荐）：`http://alucolux.shenliwen.cc`  
 浏览器 / Web：`https://alucolux.shenliwen.cc`
 
@@ -65,7 +69,8 @@ Bot 模式：`internal` 始终存在。User 模式：仅 admin 且 `disclosure=b
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `contract_area` | ✓ | 合同面积 ㎡ |
-| `width_m`, `length_m`, `thickness_mm` | ✓ | 单板尺寸 |
+| `width_m`, `length_m` | ✓ | 单板宽度、长度（m）；**宽度 ≤ 1.6（含）** |
+| `thickness_mm` | ✓ | **铝材厚度** 0.67–3 mm（含）；非复合板总厚 |
 | `color_code` | | 联动颜色库工艺 |
 | `coating_type` | | PVDF2 / PVDF3 / PRINT1–PRINT4 |
 | `charge_new_print_rolls` | **印花必填** | `true` 新开辊 / `false` 复用。PRINT* 或颜色库为印花时**必须显式传入**，否则 400 |
@@ -97,13 +102,15 @@ Bot 模式：`internal` 始终存在。User 模式：仅 admin 且 `disclosure=b
 }
 ```
 
-Margin 固定 5% + 40%，不可通过 API 修改。
+Margin 固定 **Margin1=0%、Margin2=35%**（仅 API/Bot；Web 报价页可单独调整），不可通过 API 请求体修改。
 
 ## 错误码
 
 | HTTP | detail | Bot 处理 |
 |------|--------|----------|
 | 400 | `charge_new_print_rolls_required` | **问用户是否新开印花辊**，再带 `true`/`false` 重试 |
+| 400 | `thickness_out_of_production_range` | 厚度须在 **0.67–3 mm**；否则转人工 |
+| 400 | `width_exceeds_production_limit` | 宽度须 **≤ 1.6 m**；否则转人工 |
 | 401 | invalid_api_key | 检查 Bot Key |
 | 401 | username_required（仅 user 模式） |
 | 403 | user_not_found |

@@ -11,6 +11,7 @@ from core.calculator import calc_cost, coating_traits
 from core.paths import COLOR_DB_PATH, SAVED_DEFAULT_PATH, USERS_PATH, bundle_root
 from core import storage as core_storage
 
+from core.production_limits import validate_production_dimensions
 from api.config import MARGIN1, MARGIN2, TRIAL_DEFAULTS, VALID_COATING_TYPES
 from api.schemas import (
     ColorInfo,
@@ -110,6 +111,8 @@ def resolve_disclosure(role: str, req: QuoteRequest) -> str:
 
 
 def build_order(req: QuoteRequest) -> Tuple[Dict[str, Any], Dict[str, float]]:
+    validate_production_dimensions(float(req.width_m), float(req.thickness_mm))
+
     color_profile = find_color(req.color_code) if req.color_code else None
     coating_type = (req.coating_type or (color_profile or {}).get("coating_type") or "PVDF2").strip().upper()
     if coating_type not in VALID_COATING_TYPES:

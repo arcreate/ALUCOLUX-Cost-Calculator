@@ -15,6 +15,7 @@ $Files = @(
     @{ Local = "api\main.py"; Remote = "$RemotePath/api/" },
     @{ Local = "core\calculator.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\coating.py"; Remote = "$RemotePath/core/" },
+    @{ Local = "core\production_limits.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\paths.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\storage.py"; Remote = "$RemotePath/core/" },
     @{ Local = "core\auth.py"; Remote = "$RemotePath/core/" },
