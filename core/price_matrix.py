@@ -4,8 +4,7 @@
 给非程序员的理解方式
 --------------------
 不替代单笔订单计算；只在管理员/高级用户需要「看一圈价格大概分布」时使用。
-主矩阵单价含新开印花辊（印花工艺），销售可直接引用，避免漏算辊费。
-印花辊附录单独列出含 Margin 的辊费总额（不摊薄展示）；复用辊时从订单总额扣除。
+主矩阵单价含新开印花辊（印花工艺），基准为无压花；+1/+2 道压花以增价行展示。
 """
 from __future__ import annotations
 
@@ -21,17 +20,21 @@ from core.production_limits import validate_production_dimensions
 
 AREA_STEPS_M2 = [500.0, 800.0, 1000.0, 1500.0, 2000.0, 3000.0]
 THICKNESS_STEPS_MM = [0.67, 1.0, 1.5, 2.0, 2.5, 3.0]
-EMBOSSING_STEPS = [0, 1, 2]
+EMBOSSING_LEVELS = [0, 1, 2]
+EMBOSS_LABELS: Dict[int, Dict[str, str]] = {
+    0: {"中文": "无压花", "English": "No emboss"},
+    1: {"中文": "1道压花", "English": "1 pass"},
+    2: {"中文": "2道压花", "English": "2 passes"},
+}
 DEFAULT_WIDTH_M = 1.5
 DEFAULT_LENGTH_M = 3.0
 DEFAULT_BATCH_ORDERS = 1
 
-CurrencyMode = Literal["cny", "usd", "both"]
+CurrencyMode = Literal["cny", "usd"]
 
 
 @dataclass(frozen=True)
 class MatrixConfig:
-    embossing_passes: int
     margin1: float
     margin2: float
     width_m: float = DEFAULT_WIDTH_M
@@ -45,6 +48,23 @@ class QuoteCell:
     selling_price_per_m2: float
     usd_price: float
     error: Optional[str] = None
+
+
+def rows_per_thickness() -> int:
+    return len(AREA_STEPS_M2)
+
+
+def apply_matrix_var_overrides(
+    vars_map: Dict[str, float],
+    *,
+    al_price: float,
+    exchange_rate: float,
+) -> Dict[str, float]:
+    out = dict(vars_map)
+    out["AL_PRICE"] = float(al_price)
+    out["AL_PRICE_A00_CHANGJIANG"] = float(al_price)
+    out["EXCHANGE_RATE"] = float(exchange_rate)
+    return out
 
 
 def _apply_margins_to_cost(cost: float, margin1: float, margin2: float) -> float:
@@ -126,14 +146,22 @@ def quote_cell(
         )
 
 
-def _format_cell_price(cell: QuoteCell, currency: CurrencyMode) -> Any:
+def _format_cell_price(cell: QuoteCell, currency: CurrencyMode) -> float:
     if cell.error:
-        return cell.error
-    if currency == "cny":
-        return round(cell.selling_price_per_m2, 2)
+        return cell.error  # type: ignore[return-value]
     if currency == "usd":
-        return round(cell.usd_price, 4)
-    return f"{round(cell.selling_price_per_m2, 2)} / {round(cell.usd_price, 4)}"
+        return round(cell.usd_price, 2)
+    return round(cell.selling_price_per_m2, 2)
+
+
+def format_matrix_price_display(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        return f"{float(value):.2f}"
+    return str(value)
+
+
+def matrix_cell_key(coating_type: str, embossing_passes: int) -> str:
+    return f"{coating_type}@e{embossing_passes}"
 
 
 def matrix_column_key(coating_type: str, area_m2: float) -> str:
@@ -145,25 +173,26 @@ def build_nested_matrix(
     cfg: MatrixConfig,
     currency: CurrencyMode,
 ) -> List[Dict[str, Any]]:
-    """按板厚分组，每组内多行面积 × 各工艺单价（供嵌套表格展示）。"""
+    """按板厚分组；每面积一行，列按工艺×压花道数展开为完整单价。"""
     groups: List[Dict[str, Any]] = []
     for thickness in THICKNESS_STEPS_MM:
         area_rows: List[Dict[str, Any]] = []
         for area in AREA_STEPS_M2:
             prices: Dict[str, Any] = {}
             for coating in COATING_TYPE_ORDER:
-                cell = quote_cell(
-                    vars_map,
-                    contract_area=area,
-                    width_m=cfg.width_m,
-                    thickness_mm=thickness,
-                    coating_type=coating,
-                    embossing_passes=cfg.embossing_passes,
-                    margin1=cfg.margin1,
-                    margin2=cfg.margin2,
-                    charge_new_print_rolls=True,
-                )
-                prices[coating] = _format_cell_price(cell, currency)
+                for emboss in EMBOSSING_LEVELS:
+                    cell = quote_cell(
+                        vars_map,
+                        contract_area=area,
+                        width_m=cfg.width_m,
+                        thickness_mm=thickness,
+                        coating_type=coating,
+                        embossing_passes=emboss,
+                        margin1=cfg.margin1,
+                        margin2=cfg.margin2,
+                        charge_new_print_rolls=True,
+                    )
+                    prices[matrix_cell_key(coating, emboss)] = _format_cell_price(cell, currency)
             area_rows.append({"area_m2": area, "prices": prices})
         groups.append({"thickness_mm": thickness, "area_rows": area_rows})
     return groups
@@ -188,7 +217,7 @@ def build_integrated_matrix_rows(
     cfg: MatrixConfig,
     currency: CurrencyMode,
 ) -> List[Dict[str, Any]]:
-    """宽表格式（导出兼容）；列名 coating@area。"""
+    """宽表导出：板厚 × (工艺@面积)，仅无压花。"""
     rows: List[Dict[str, Any]] = []
     for thickness in THICKNESS_STEPS_MM:
         row: Dict[str, Any] = {"thickness_mm": thickness}
@@ -200,7 +229,7 @@ def build_integrated_matrix_rows(
                     width_m=cfg.width_m,
                     thickness_mm=thickness,
                     coating_type=coating,
-                    embossing_passes=cfg.embossing_passes,
+                    embossing_passes=0,
                     margin1=cfg.margin1,
                     margin2=cfg.margin2,
                     charge_new_print_rolls=True,
@@ -217,15 +246,23 @@ def nested_matrix_to_html(
     col_thickness: str,
     col_area: str,
 ) -> str:
-    """嵌套 HTML 表：厚度 rowspan + 面积分行 + 工艺列。"""
-    area_unit = "㎡" if ui_lang == "中文" else "m²"
-    coat_headers = [
-        COATING_CODE_TO_LABEL.get(c, {}).get(ui_lang, c) for c in COATING_TYPE_ORDER
-    ]
-    head_thickness = f'<th class="pm-th pm-th-label" scope="col">{html.escape(col_thickness)}</th>'
-    head_area = f'<th class="pm-th pm-th-label" scope="col">{html.escape(col_area)}</th>'
-    head_coats = "".join(f'<th class="pm-th pm-th-price" scope="col">{html.escape(h)}</th>' for h in coat_headers)
+    """嵌套 HTML 表：双行表头（工艺 + 压花道数），每面积一行。"""
+    head_thickness = f'<th class="pm-th pm-th-label" scope="col" rowspan="2">{html.escape(col_thickness)}</th>'
+    head_area = f'<th class="pm-th pm-th-label" scope="col" rowspan="2">{html.escape(col_area)}</th>'
+    coat_row = [head_thickness, head_area]
+    emboss_row: List[str] = []
+    for coating in COATING_TYPE_ORDER:
+        coat_label = COATING_CODE_TO_LABEL.get(coating, {}).get(ui_lang, coating)
+        coat_row.append(
+            f'<th class="pm-th pm-th-coat" scope="col" colspan="{len(EMBOSSING_LEVELS)}">{html.escape(coat_label)}</th>'
+        )
+        for emboss in EMBOSSING_LEVELS:
+            emboss_row.append(
+                f'<th class="pm-th pm-th-emboss" scope="col">{html.escape(EMBOSS_LABELS[emboss][ui_lang])}</th>'
+            )
+
     body_parts: List[str] = []
+    area_unit = "㎡" if ui_lang == "中文" else "m²"
     for group in nested:
         thickness = group["thickness_mm"]
         area_rows = group["area_rows"]
@@ -237,10 +274,15 @@ def nested_matrix_to_html(
                     f'<td class="pm-thickness" rowspan="{rowspan}">{html.escape(f"{thickness:g}")}</td>'
                 )
             area_label = f'{area_row["area_m2"]:g}{area_unit}'
-            cells.append(f'<td class="pm-area">{html.escape(area_label)}</td>')
+            cells.append(
+                f'<td class="pm-area">{html.escape(area_label)}</td>'
+            )
             for coating in COATING_TYPE_ORDER:
-                val = area_row["prices"].get(coating, "")
-                cells.append(f'<td class="pm-price">{html.escape(str(val))}</td>')
+                for emboss in EMBOSSING_LEVELS:
+                    val = area_row["prices"].get(matrix_cell_key(coating, emboss), "")
+                    cells.append(
+                        f'<td class="pm-price">{html.escape(format_matrix_price_display(val))}</td>'
+                    )
             body_parts.append(f"<tr>{''.join(cells)}</tr>")
 
     return f"""
@@ -262,10 +304,11 @@ def nested_matrix_to_html(
   vertical-align: bottom;
   line-height: 1.35;
   white-space: normal;
-  min-width: 4.5rem;
+  min-width: 4rem;
 }}
 .pm-matrix thead th.pm-th-label {{ min-width: 3.5rem; }}
-.pm-matrix thead th.pm-th-price {{ min-width: 5.5rem; }}
+.pm-matrix thead th.pm-th-coat {{ min-width: 8rem; }}
+.pm-matrix thead th.pm-th-emboss {{ min-width: 4.5rem; font-weight: 500; font-size: 0.82rem; }}
 .pm-matrix td.pm-thickness {{
   text-align: center;
   font-weight: 600;
@@ -279,13 +322,16 @@ def nested_matrix_to_html(
 .pm-matrix td.pm-price {{
   text-align: right;
   font-variant-numeric: tabular-nums;
-  min-width: 5rem;
+  min-width: 4.5rem;
   white-space: nowrap;
 }}
 </style>
 <div class="pm-wrap">
 <table class="pm-matrix">
-<thead><tr>{head_thickness}{head_area}{head_coats}</tr></thead>
+<thead>
+<tr>{''.join(coat_row)}</tr>
+<tr>{''.join(emboss_row)}</tr>
+</thead>
 <tbody>{''.join(body_parts)}</tbody>
 </table>
 </div>
@@ -295,22 +341,19 @@ def nested_matrix_to_html(
 def build_print_roll_table(
     vars_map: Dict[str, float],
     *,
-    margin1: float,
-    margin2: float,
+    exchange_rate: float,
 ) -> List[Dict[str, Any]]:
-    exchange_rate = float(vars_map.get("EXCHANGE_RATE", 6.85))
+    fx = float(exchange_rate or vars_map.get("EXCHANGE_RATE", 6.85))
     print_coatings = [c for c in COATING_TYPE_ORDER if c.startswith("PRINT")]
     out: List[Dict[str, Any]] = []
     for coating in print_coatings:
         layers = coating_traits(coating)["print_layers"]
         roll_cost = calc_print_roll_cost(layers, True, vars_map)
-        selling_total = _apply_margins_to_cost(roll_cost, margin1, margin2)
         out.append(
             {
                 "coating_type": coating,
                 "print_roll_cost": round(roll_cost, 2),
-                "print_roll_selling_total": round(selling_total, 2),
-                "print_roll_selling_usd": round(selling_total / exchange_rate, 2) if exchange_rate else 0.0,
+                "print_roll_cost_usd": round(roll_cost / fx, 2) if fx else 0.0,
             }
         )
     return out
@@ -320,6 +363,7 @@ def matrix_assumption_lines(
     cfg: MatrixConfig,
     *,
     ui_lang: str,
+    al_price: float,
     exchange_rate: float,
 ) -> List[str]:
     zh = ui_lang == "中文"
@@ -327,17 +371,17 @@ def matrix_assumption_lines(
     areas = "、".join(f"{a:g}" for a in AREA_STEPS_M2)
     if zh:
         return [
-            f"基准：宽 {cfg.width_m:g} m · 长 {DEFAULT_LENGTH_M} m · 压花 {cfg.embossing_passes} 道 · 1 批 · 默认漆价",
-            f"主矩阵：板厚合并单元格，每行一个面积档位（{areas} ㎡）；印花工艺单价已含新开辊",
-            f"Margin1={m1:.0%} Margin2={m2:.0%} · 下方辊费总额为参考数；复用现有辊时从订单总额扣除",
-            f"汇率 {exchange_rate:g}（USD 列适用时）",
+            f"基准：宽 {cfg.width_m:g} m · 长 {DEFAULT_LENGTH_M} m · 无压花 · 1 批 · 默认漆价",
+            f"铝价 {al_price:.4f} 元/kg · 汇率 {exchange_rate:g} · Margin1={m1:.0%} Margin2={m2:.0%}",
+            f"主矩阵：每面积一行；列按工艺×（无压花/1道/2道）展开完整单价（{areas} ㎡）",
+            "印花工艺基准单价已含新开辊；下方辊费为不含利润的成本参考，复用辊时从订单总额扣除",
         ]
     areas_en = ", ".join(f"{a:g}" for a in AREA_STEPS_M2)
     return [
-        f"Baseline: width {cfg.width_m:g} m · length {DEFAULT_LENGTH_M} m · embossing {cfg.embossing_passes} · 1 batch · default paint",
-        f"Matrix columns span contract areas ({areas_en} m²); print coatings include new rolls in unit price",
-        f"Margin1={m1:.0%} Margin2={m2:.0%} · roll totals below are for reference; deduct from order total if reusing rolls",
-        f"FX {exchange_rate:g} (for USD)",
+        f"Baseline: width {cfg.width_m:g} m · length {DEFAULT_LENGTH_M} m · no embossing · 1 batch · default paint",
+        f"Al {al_price:.4f} CNY/kg · FX {exchange_rate:g} · Margin1={m1:.0%} Margin2={m2:.0%}",
+        f"Matrix: one row per area; columns are coating × (no emboss / 1 pass / 2 passes) full unit prices ({areas_en} m²)",
+        "Print coatings include new rolls; roll costs below (ex-margin) for reuse deduction",
     ]
 
 

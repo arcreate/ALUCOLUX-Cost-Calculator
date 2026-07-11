@@ -20,6 +20,7 @@ from core import auth as core_auth
 from core import interactive_report as core_interactive_report
 from core import agent_bundle as core_agent_bundle
 from core import price_matrix as core_price_matrix
+from core import ui_draft as core_ui_draft
 from core.coating import COATING_CODE_TO_LABEL, COATING_TYPE_ORDER, TRIAL_DEFAULTS, VALID_COATING_TYPES
 from core.production_limits import MAX_THICKNESS_MM, MAX_WIDTH_M, MIN_THICKNESS_MM, validate_production_dimensions
 
@@ -289,31 +290,38 @@ UI_TEXT = {
         "English": "Click a blue ◆ variable ◆ to edit temporarily and recalculate. Changes are not saved to defaults or the library.",
     },
     "sandbox_export_title": {"中文": "导出当前试算报告", "English": "Export current sandbox report"},
+    "ui_draft_hint": {
+        "中文": "填写内容与计算结果会自动保存；刷新页面后重新登录即可恢复（不含密码）。",
+        "English": "Your entries and results auto-save; sign in again after refresh to restore (password not stored).",
+    },
+    "ui_draft_restored": {
+        "中文": "已恢复上次未完成的填写与计算结果。",
+        "English": "Restored your last session inputs and calculation results.",
+    },
     "main_tab_quote": {"中文": "报价计算", "English": "Quotation"},
     "main_tab_price_matrix": {"中文": "价格速查表", "English": "Price quick reference"},
     "price_matrix_title": {"中文": "价格速查表", "English": "Price quick reference"},
     "price_matrix_desc": {
-        "中文": "固定宽 1.5 m、长 3 m、1 批、默认漆价。主矩阵单价含新开印花辊（印花工艺），销售可直接引用；下方另列辊费总额供复用辊时扣减。",
-        "English": "Fixed 1.5 m width, 3 m length, 1 batch, default paint. Matrix unit prices include new print rolls; roll lump sums below for reuse deduction.",
+        "中文": "可调 Margin、铝价、汇率；主矩阵每面积一行，列按工艺×无压花/1道/2道展开。货币人民币或美元二选一。",
+        "English": "Adjust margins, Al price, FX; one row per area, columns by coating × emboss level. CNY or USD only.",
     },
     "price_matrix_refresh": {"中文": "生成 / 刷新", "English": "Generate / refresh"},
-    "price_matrix_slice_emboss": {"中文": "压花道数", "English": "Embossing passes"},
-    "price_matrix_currency": {"中文": "显示 / 导出货币", "English": "Display / export currency"},
+    "price_matrix_al_price": {"中文": "铝价 (元/kg)", "English": "Al price (CNY/kg)"},
+    "price_matrix_exchange_rate": {"中文": "汇率", "English": "Exchange rate"},
+    "price_matrix_currency": {"中文": "货币", "English": "Currency"},
     "price_matrix_currency_cny": {"中文": "人民币 (元/㎡)", "English": "CNY/m²"},
     "price_matrix_currency_usd": {"中文": "美元 (USD/㎡)", "English": "USD/m²"},
-    "price_matrix_currency_both": {"中文": "双列 (元/㎡ + USD/㎡)", "English": "Both (CNY & USD per m²)"},
     "price_matrix_main": {"中文": "主矩阵（板厚 × 工艺 × 面积）", "English": "Main matrix (thickness × coating × area)"},
-    "price_matrix_print_rolls": {"中文": "新开印花辊参考价", "English": "New print roll reference"},
+    "price_matrix_print_rolls": {"中文": "新开印花辊成本参考", "English": "New print roll cost reference"},
     "price_matrix_print_rolls_hint": {
-        "中文": "主矩阵单价已含新开辊（印花工艺）。下表为每种印花的辊费销售总额（不按面积摊薄）。客户复用现有辊时：**订单总额 − 对应行的新开辊费总额**。",
-        "English": "Matrix unit prices already include new rolls for print coatings. Below: lump-sum roll fee per coating (not per m²). Deduct from order total when reusing rolls.",
+        "中文": "主矩阵单价已含新开辊（印花工艺，含利润）。下表为每种印花的**辊费成本**（不含 Margin，不按面积摊薄）。复用现有辊时可从订单总额扣除，扣减更保守。",
+        "English": "Matrix unit prices include new rolls with margin. Below: raw roll cost per coating (no margin). Deduct from order total when reusing rolls.",
     },
     "price_matrix_export_csv": {"中文": "导出 CSV", "English": "Export CSV"},
     "price_matrix_col_thickness": {"中文": "厚度", "English": "Thickness"},
     "price_matrix_col_area": {"中文": "面积", "English": "Area"},
     "price_matrix_col_roll_cost": {"中文": "辊费成本(元)", "English": "Roll cost (CNY)"},
-    "price_matrix_col_roll_selling": {"中文": "新开辊费总额(元)", "English": "New roll total (CNY)"},
-    "price_matrix_col_roll_selling_usd": {"中文": "新开辊费总额(USD)", "English": "New roll total (USD)"},
+    "price_matrix_col_roll_cost_usd": {"中文": "辊费成本(USD)", "English": "Roll cost (USD)"},
 }
 
 COLOR_DB_COLUMNS = ["color_code", "coating_type", "embossing_passes", "face_paint_price", "clear_paint_price", "updated_at"]
@@ -771,6 +779,12 @@ def _render_price_matrix(ui_lang: str) -> None:
 
     _sync_vars_map_from_var_widget_keys()
     vars_map = dict(st.session_state.vars_map)
+    if "pm_al_price" not in st.session_state:
+        st.session_state.pm_al_price = float(vars_map.get("AL_PRICE", vars_map.get("AL_PRICE_A00_CHANGJIANG", 27.5)))
+    if "pm_exchange_rate" not in st.session_state:
+        st.session_state.pm_exchange_rate = float(vars_map.get("EXCHANGE_RATE", 6.85))
+    if st.session_state.get("pm_currency") not in ("cny", "usd"):
+        st.session_state.pm_currency = "cny"
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -798,48 +812,59 @@ def _render_price_matrix(ui_lang: str) -> None:
             )
         )
     with c3:
-        currency_labels = [
-            t("price_matrix_currency_cny", ui_lang),
-            t("price_matrix_currency_usd", ui_lang),
-            t("price_matrix_currency_both", ui_lang),
-        ]
-        currency_pick = st.selectbox(
+        currency_mode = st.radio(
             t("price_matrix_currency", ui_lang),
-            currency_labels,
-            index=0,
+            options=["cny", "usd"],
+            format_func=lambda x: t("price_matrix_currency_cny", ui_lang)
+            if x == "cny"
+            else t("price_matrix_currency_usd", ui_lang),
+            horizontal=True,
             key="pm_currency",
         )
 
-    currency_mode = "cny"
-    if currency_pick == currency_labels[1]:
-        currency_mode = "usd"
-    elif currency_pick == currency_labels[2]:
-        currency_mode = "both"
-
-    emboss = int(
-        st.selectbox(
-            t("price_matrix_slice_emboss", ui_lang),
-            core_price_matrix.EMBOSSING_STEPS,
-            index=0,
-            key="pm_emboss",
+    c4, c5, _ = st.columns(3)
+    with c4:
+        al_price = float(
+            st.number_input(
+                t("price_matrix_al_price", ui_lang),
+                min_value=0.0,
+                step=0.1,
+                format="%.4f",
+                key="pm_al_price",
+            )
         )
+    with c5:
+        exchange_rate = float(
+            st.number_input(
+                t("price_matrix_exchange_rate", ui_lang),
+                min_value=0.001,
+                step=0.01,
+                format="%.4f",
+                key="pm_exchange_rate",
+            )
+        )
+
+    pm_vars = core_price_matrix.apply_matrix_var_overrides(
+        vars_map,
+        al_price=al_price,
+        exchange_rate=exchange_rate,
     )
 
     refresh = st.button(t("price_matrix_refresh", ui_lang), type="primary", key="btn_pm_refresh")
     if refresh or st.session_state.get("price_matrix_cache") is None:
-        cfg = core_price_matrix.MatrixConfig(emboss, margin1, margin2)
-        nested = core_price_matrix.build_nested_matrix(vars_map, cfg, currency_mode)
+        cfg = core_price_matrix.MatrixConfig(margin1, margin2)
+        nested = core_price_matrix.build_nested_matrix(pm_vars, cfg, currency_mode)
         matrix_rows = core_price_matrix.nested_matrix_to_flat_rows(nested)
-        wide_matrix_rows = core_price_matrix.build_integrated_matrix_rows(vars_map, cfg, currency_mode)
+        wide_matrix_rows = core_price_matrix.build_integrated_matrix_rows(pm_vars, cfg, currency_mode)
         print_rows = core_price_matrix.build_print_roll_table(
-            vars_map,
-            margin1=margin1,
-            margin2=margin2,
+            pm_vars,
+            exchange_rate=exchange_rate,
         )
         assumptions = core_price_matrix.matrix_assumption_lines(
             cfg,
             ui_lang=ui_lang,
-            exchange_rate=float(vars_map.get("EXCHANGE_RATE", 6.85)),
+            al_price=al_price,
+            exchange_rate=exchange_rate,
         )
         st.session_state.price_matrix_cache = {
             "nested_matrix": nested,
@@ -852,6 +877,9 @@ def _render_price_matrix(ui_lang: str) -> None:
 
     cache = st.session_state.get("price_matrix_cache") or {}
     assumptions = cache.get("assumptions", [])
+    currency_mode = cache.get("currency_mode", st.session_state.get("pm_currency", "cny"))
+    if currency_mode not in ("cny", "usd"):
+        currency_mode = "cny"
     for line in assumptions:
         st.caption(line)
 
@@ -875,16 +903,16 @@ def _render_price_matrix(ui_lang: str) -> None:
         st.markdown(f"#### {t('price_matrix_print_rolls', ui_lang)}")
         st.caption(t("price_matrix_print_rolls_hint", ui_lang))
         coat_col = t("coating", ui_lang)
-        roll_cny_col = t("price_matrix_col_roll_selling", ui_lang)
-        roll_usd_col = t("price_matrix_col_roll_selling_usd", ui_lang)
-        display_print_rows = [
-            {
+        display_print_rows = []
+        for row in print_rows:
+            item = {
                 coat_col: COATING_CODE_TO_LABEL.get(str(row["coating_type"]), {}).get(ui_lang, row["coating_type"]),
-                roll_cny_col: row["print_roll_selling_total"],
-                roll_usd_col: row["print_roll_selling_usd"],
             }
-            for row in print_rows
-        ]
+            if currency_mode == "usd":
+                item[t("price_matrix_col_roll_cost_usd", ui_lang)] = row["print_roll_cost_usd"]
+            else:
+                item[t("price_matrix_col_roll_cost", ui_lang)] = row["print_roll_cost"]
+            display_print_rows.append(item)
         st.dataframe(display_print_rows, use_container_width=True, hide_index=True)
 
     if _user_can("price_matrix_export") and matrix_rows:
@@ -1185,6 +1213,9 @@ def _render_login_page(ui_lang: str) -> None:
             st.session_state.auth_user = username.strip()
             st.session_state.auth_role = role
             st.session_state.pop("_show_initial_admin_hint", None)
+            st.session_state.pop("_ui_draft_restored", None)
+            for _dk in core_ui_draft.DRAFT_KEYS:
+                st.session_state.pop(_dk, None)
             st.rerun()
 
 
@@ -1363,6 +1394,7 @@ def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
             index=None,
             placeholder=t("color_select", ui_lang),
             accept_new_options=True,
+            key="order_color_select",
         )
     st.caption(t("color_sync_tip", ui_lang))
 
@@ -1378,21 +1410,33 @@ def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
     c1, c2, c3 = st.columns(3)
     with c1:
         contract_area = float(
-            st.number_input(t("contract_area", ui_lang), min_value=0.001, value=1000.0, step=1.0, format="%.3f")
+            st.number_input(
+                t("contract_area", ui_lang),
+                min_value=0.001,
+                step=1.0,
+                format="%.3f",
+                key="order_contract_area",
+            )
         )
         width_m = st.number_input(
             t("width", ui_lang),
             min_value=0.001,
             max_value=MAX_WIDTH_M,
-            value=1.5,
             step=0.001,
             format="%.3f",
             help={"中文": f"辊涂线最大宽度 {MAX_WIDTH_M} m（含）", "English": f"Max production width {MAX_WIDTH_M} m (inclusive)"}[ui_lang],
+            key="order_width_m",
         )
-        batch_orders = st.number_input(t("batch_orders", ui_lang), min_value=1, value=1, step=1)
+        batch_orders = st.number_input(
+            t("batch_orders", ui_lang), min_value=1, step=1, key="order_batch_orders"
+        )
     with c2:
-        length_m = st.number_input(t("length", ui_lang), min_value=0.001, value=3.00, step=0.001, format="%.3f")
-        thickness_mm = st.number_input(t("thickness", ui_lang), min_value=0.001, value=3.0, step=0.01, format="%.3f")
+        length_m = st.number_input(
+            t("length", ui_lang), min_value=0.001, step=0.001, format="%.3f", key="order_length_m"
+        )
+        thickness_mm = st.number_input(
+            t("thickness", ui_lang), min_value=0.001, step=0.01, format="%.3f", key="order_thickness_mm"
+        )
         profit_margin_on_price = float(
             st.number_input(
                 t("profit_margin_on_price", ui_lang),
@@ -1440,7 +1484,7 @@ def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
             options=[0, 1, 2],
             key="order_embossing_select",
         )
-        auto_trial = st.checkbox(t("trial_auto", ui_lang), value=True)
+        auto_trial = st.checkbox(t("trial_auto", ui_lang), key="order_trial_auto")
         charge_new_print_rolls = st.checkbox(
             t("charge_new_print_rolls", ui_lang),
             value=True,
@@ -1467,13 +1511,17 @@ def _render_quotation_page(ui_lang: str, role: str, username: str) -> None:
 
     traits = coating_traits(coating_type)
     default_trial = TRIAL_DEFAULTS[coating_type]
-    trial_times = default_trial if auto_trial else st.number_input(t("trial_times", ui_lang), min_value=0, value=default_trial, step=1)
+    trial_times = (
+        default_trial
+        if auto_trial
+        else st.number_input(t("trial_times", ui_lang), min_value=0, step=1, key="order_trial_times")
+    )
 
     use_clear = traits["clear_required"]
     use_size_rounding_waste = st.checkbox(
         t("rounding_waste", ui_lang),
-        value=False,
         help=t("rounding_help", ui_lang),
+        key="order_rounding_waste",
     )
 
     with st.expander(t("a00_pricing", ui_lang), expanded=True):
@@ -1910,14 +1958,27 @@ def main() -> None:
     role = _auth_role()
     username = _auth_username()
 
+    if not st.session_state.get("_ui_draft_restored"):
+        draft = core_ui_draft.load_ui_draft(username)
+        if draft:
+            core_ui_draft.apply_draft(st.session_state, draft)
+            st.session_state["_show_ui_draft_restored"] = True
+        st.session_state["_ui_draft_restored"] = True
+    core_ui_draft.seed_order_widget_defaults(st.session_state)
+
     with st.sidebar:
         ui_lang = st.selectbox(t("lang", st.session_state.ui_lang), ["中文", "English"], index=0 if st.session_state.ui_lang == "中文" else 1)
         st.session_state.ui_lang = ui_lang
         st.caption(f"{t('logged_in_as', ui_lang)}: **{username}**")
         st.caption(f"{t('role_label', ui_lang)}: {_role_display(ui_lang)}")
+        st.caption(t("ui_draft_hint", ui_lang))
+        if st.session_state.pop("_show_ui_draft_restored", False):
+            st.success(t("ui_draft_restored", ui_lang))
         if st.button(t("logout_btn", ui_lang), key="btn_logout"):
+            core_ui_draft.save_ui_draft(username, st.session_state)
             st.session_state.auth_user = None
             st.session_state.auth_role = None
+            st.session_state.pop("_ui_draft_restored", None)
             st.rerun()
         if st.session_state.pop("_show_initial_admin_hint", False):
             st.warning(t("initial_admin_hint", ui_lang))
@@ -2098,6 +2159,8 @@ def main() -> None:
         _render_quotation_page(ui_lang, role, username)
 
     _refresh_config_export_cache()
+    if _is_logged_in():
+        core_ui_draft.save_ui_draft(username, st.session_state)
 
 
 # Phase-1 modularization:
